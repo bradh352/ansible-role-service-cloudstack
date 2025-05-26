@@ -1,0 +1,47 @@
+---
+- name: "APT: see if we have a keyring"
+  stat:
+    path: /etc/apt/trusted.gpg.d/cloudstack.asc
+  register: keyring_exists
+
+- name: "APT: fetch keyring"
+  ansible.builtin.get_url:
+    url: https://download.cloudstack.org/release.asc
+    dest: /etc/apt/trusted.gpg.d/cloudstack.asc
+    mode: "644"
+  when: not keyring_exists.stat.exists
+  register: keyring
+
+- name: "APT: Import Key"
+  shell: "apt-key add /etc/apt/trusted.gpg.d/cloudstack.asc"
+  when: keyring.changed
+
+- name: "APT: Install cloudstack repository"
+  template:
+    src: cloudstack.sources.j2
+    dest: /etc/apt/sources.list.d/cloudstack.sources
+    owner: root
+    mode: "644"
+  register: repo
+
+- name: "APT: Update cache"
+  ansible.builtin.apt:
+    update_cache: true
+  when: repo.changed
+
+- name: Configure for Cloudstack Management
+  import_tasks: "cloudstack-mgmt.yml"
+  when: inventory_hostname in groups["cloudstack_mgmt"]
+
+- name: Configure for Cloudstack KVM Hypervisor
+  import_tasks: "cloudstack-kvm.yml"
+  when: inventory_hostname in groups["cloudstack_kvm"]
+
+- name: Configure SystemVM Template
+  import_tasks: "cloudstack-systemvm.yml"
+  when: inventory_hostname in groups["cloudstack_mgmt"]
+  run_once: true
+
+- name: Configure via CloudMonkey
+  import_tasks: "cloudstack-api.yml"
+  when: inventory_hostname in groups["cloudstack_mgmt"]

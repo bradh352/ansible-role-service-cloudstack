@@ -1,0 +1,5 @@
+---
+cloudstack_db_name: cloudstack
+cloudstack_db_user: cloudstack
+cloudstack_usage_db_name: cloudstack_usage
+cloudstack_usage_db_user: cloudstack_usage

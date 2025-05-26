@@ -1,0 +1,12 @@
+---
+- name: "libvirt_restart"
+  service:
+    name: libvirtd
+    state: restarted
+
+- name: "ufw_restart"
+  service:
+    name: ufw
+    state: restarted
+
+

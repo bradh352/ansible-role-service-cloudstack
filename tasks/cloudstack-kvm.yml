@@ -1,0 +1,164 @@
+---
+- name: "APT: Install cloudstack-agent"
+  ansible.builtin.apt:
+    pkg:
+      - "cloudstack-agent"
+    state: present
+
+- name: Create the cloudstack user
+  user:
+    name: "cloudstack"
+    create_home: yes
+    shell: "/bin/bash"
+    state: present
+    password: "!"
+    update_password: always
+
+- name: Update sudoers for cloudstack agent setup requiretty
+  lineinfile:
+    path: /etc/sudoers
+    line: "Defaults:cloudstack     !requiretty"
+    insertafter: "^#Defaults:.*"
+
+- name: Update sudoers for cloudstack agent setup nopasswd
+  lineinfile:
+    path: /etc/sudoers
+    line: "cloudstack ALL=NOPASSWD: {{ item }}"
+    insertafter: "^root.*"
+  with_items:
+    - "/usr/bin/cloudstack-setup-agent"
+    - "/usr/share/cloudstack-common/scripts/util/keystore-setup"
+    - "/usr/share/cloudstack-common/scripts/util/keystore-cert-import"
+    - "/usr/sbin/service"
+    - "/usr/sbin/update-rc.d"
+
+
+- name: See if public key is registered
+  stat:
+    path: /home/cloudstack/.ssh/authorized_keys
+  register: authorized_keys
+
+- name: Fetch management node public key
+  slurp:
+    src: /var/lib/cloudstack/management/.ssh/id_rsa.pub
+  register: public_key
+  delegate_to: "{{ groups['cloudstack_mgmt'] | first }}"
+  when: not authorized_keys.stat.exists
+
+- name: "Ensure /home/cloudstack/.ssh exists"
+  file:
+    path: "/home/cloudstack/.ssh/"
+    state: directory
+    mode: 0700
+    owner: "cloudstack"
+    group: "cloudstack"
+
+- name: "Make sure the public key for ssh authentication is configured for the cloudstack user"
+  lineinfile:
+    path: "/home/cloudstack/.ssh/authorized_keys"
+    state: present
+    create: yes
+    owner: cloudstack
+    group: cloudstack
+    mode: 0600
+    line: "{{ public_key['content'] | b64decode }}"
+  when: not authorized_keys.stat.exists
+
+- name: "cloudstack agent set cpu model"
+  lineinfile:
+    path: /etc/cloudstack/agent/agent.properties
+    regexp: '^#guest\.cpu\.mode=.*'
+    line: "guest.cpu.mode=host-model"
+
+- name: "setup libvirt for cloudstack"
+  lineinfile:
+    path: /etc/libvirt/libvirtd.conf
+    line: "{{ item.key }} = {{ item.val }}"
+    regexp: "^#?{{ item.key }} *=.*"
+  with_items:
+    - { key: "listen_tls", val: "0" }
+    - { key: "listen_tcp", val: "0" }
+    - { key: "tls_port", val: '"16514"' }
+    - { key: "tcp_port", val: '"16509"' }
+    - { key: "auth_tcp", val: '"none"' }
+    - { key: "mdns_adv", val: "0" }
+  notify: libvirt_restart
+
+- name: "setup libvirt for cloudstack /etc/default"
+  lineinfile:
+    path: /etc/default/libvirtd
+    line: 'LIBVIRTD_ARGS="--listen"'
+    regexp: "^#?LIBVIRTD_ARGS=.*"
+  notify: libvirt_restart
+
+- name: "setup libvirt for cloudstack"
+  lineinfile:
+    path: /etc/libvirt/libvirt.conf
+    line: 'remote_mode="legacy"'
+    regexp: "^#?remote_mode *=.*"
+
+- name: "Mask socket services"
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    masked: true
+    enabled: false
+    state: stopped
+  with_items:
+    - libvirtd.socket
+    - libvirtd-ro.socket
+    - libvirtd-admin.socket
+    - libvirtd-tls.socket
+    - libvirtd-tcp.socket
+  notify: libvirt_restart
+
+- name: "Create symlinks to disable apparmor"
+  file:
+    state: link
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+  with_items:
+    - { src: '/etc/apparmor.d/usr.sbin.libvirtd', dest: '/etc/apparmor.d/disable/usr.sbin.libvirtd' }
+    - { src: '/etc/apparmor.d/usr.lib.libvirt.virt-aa-helper', dest: '/etc/apparmor.d/disable/usr.lib.libvirt.virt-aa-helper' }
+  register: disable_apparmor
+
+- name: "Load apparmor profile"
+  shell: "apparmor_parser -R /etc/apparmor.d/usr.sbin.libvirtd && apparmor_parser -R /etc/apparmor.d/usr.lib.libvirt.virt-aa-helper"
+  when: disable_apparmor.changed
+
+- name: "Configure for vxlan evpn"
+  copy:
+    src: modifyvxlan-evpn.sh
+    dest: /usr/share/modifyvxlan.sh
+    mode: "755"
+
+- name: "UFW: Load bridge module"
+  lineinfile:
+    path: /etc/default/ufw
+    line: 'IPT_MODULES="bridge"'
+    regexp: "^IPT_MODULES"
+  notify: ufw_restart
+
+- name: "UFW: Don't apply rules on bridge traffic"
+  lineinfile:
+    path: /etc/ufw/sysctl.conf
+    line: "{{ item.key }} = {{ item.val }}"
+    regexp: "^{{ item.key }}.*"
+  with_items:
+    - { key: net.bridge.bridge-nf-call-ip6tables, val: 0 }
+    - { key: net.bridge.bridge-nf-call-iptables, val: 0 }
+    - { key: net.bridge.bridge-nf-call-arptables, val: 0 }
+  notify: ufw_restart
+
+- name: "UFW: Enable Cloudstack Agent Ports"
+  community.general.ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: tcp
+  with_items:
+    - "1798"
+    - "16514" #libvirt
+    - "5900:6100" #VNC consoles)
+    - "49152:49216" #libvirt live migration
+
+- name: "Flush handlers"
+  meta: flush_handlers

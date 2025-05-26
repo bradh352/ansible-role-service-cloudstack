@@ -1,0 +1,27 @@
+---
+- name: "Secondary: Make mount directory"
+  file:
+    path: /mnt/tmp
+    state: directory
+    mode: "777"
+  changed_when: false
+
+- name: "Secondary: Mount filesystems"
+  shell: "mount -t nfs localhost:/{{ cloudstack_ceph_fs }}/ /mnt/tmp"
+  changed_when: false
+
+- name: "See if template directory exists"
+  stat:
+    path: /mnt/tmp/template
+  register: templatedir
+  run_once: true
+
+# TODO: Determine how to update the system vm image on upgrades
+- name: "Generate system vm image"
+  shell: "/usr/share/cloudstack-common/scripts/storage/secondary/cloud-install-sys-tmplt -m /mnt/tmp -u {{ cloudstack_systemvm }} -h kvm -s '{{ cloudstack_mgmt_key }}' -F"
+  when: not templatedir.stat.exists
+  run_once: true
+
+- name: "Secondary: Unmount"
+  shell: "umount /mnt/tmp"
+  changed_when: false

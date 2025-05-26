@@ -1,0 +1,110 @@
+---
+- name: "CMK: Determine nodes which are initialized with API Keys"
+  shell:  "grep ^apikey /root/.cmk/config | sed -E 's/.*=(.*)/\\1/' | sed -E 's/ //g'"
+  delegate_to: "{{ item }}"
+  ignore_unreachable: yes
+  failed_when: false
+  changed_when: false
+  no_log: true
+  register: cmk_bootstrap_nodes
+  with_items: "{{ groups['cloudstack_mgmt']|unique|sort }}"
+
+- name: "CMK: Determine which node to use for boostrapping"
+  set_fact:
+    cmk_bootstrap_node: >-
+      {%- set eligible_hosts = [] %}
+      {%- for node in cmk_bootstrap_nodes.results %}
+      {%-   if node.stdout|length > 0 %}
+      {%-     do eligible_hosts.append(node.item) %}
+      {%-   endif %}
+      {%- endfor %}
+      {%- if eligible_hosts | length == 0 %}
+      {%-   do eligible_hosts.append(groups['cloudstack_mgmt']|unique|sort|first) %}
+      {%- endif %}
+      {{- eligible_hosts[0] -}}
+
+- name: "CMK: See if an API key is configured"
+  shell:  "grep ^apikey /root/.cmk/config | sed -E 's/.*=(.*)/\\1/' | sed -E 's/ //g'"
+  changed_when: false
+  no_log: true
+  register: cmk_has_api_key
+
+- name: "CMK: Check to see if we need to bootstrap"
+  set_fact:
+    cmk_bootstrap: "{{ 'true' if cmk_has_api_key.stdout | length == 0 and inventory_hostname == cmk_bootstrap_node else 'false' }}"
+
+- name: "CMK: Set up cloudmonkey"
+  shell: "cmk sync"
+  when: cmk_bootstrap
+
+- name: "CMK: Retrieve admin user id"
+  shell: "cmk list users username=admin | jq -r .user[0].id"
+  register: cmk_user_id
+  when: cmk_bootstrap
+
+- name: "CMK: Generate admin API key"
+  shell: "cmk register userkeys id={{ cmk_user_id.stdout }}"
+  no_log: true
+  register: cmk_userkeys
+  when: cmk_bootstrap
+
+- name: "CMK: Parse API Key"
+  set_fact:
+    cmk_api_key: "{{ cmk_userkeys.stdout | from_yaml }}"
+  no_log: true
+  when: cmk_bootstrap
+
+- name: "CMK: Configure API keys"
+  shell: |
+    cmk set apikey {{ cmk_api_key.userkeys.apikey }}
+    cmk set secretkey {{ cmk_api_key.userkeys.secretkey }}
+  no_log: true
+  when: cmk_bootstrap
+
+- name: "CMK: Fetch the CMK configuration"
+  shell: base64 /root/.cmk/config
+  register: cmk_config_data
+  when: cmk_has_api_key.stdout | length == 0 and not cmk_bootstrap
+  delegate_to: "{{ cmk_bootstrap_node }}"
+
+- name: "CMK: Install configuration"
+  copy:
+    dest: "/root/.cmk/config"
+    content: "{{ cmk_config_data.stdout | b64decode }}"
+    mode: "600"
+    owner: root
+  when: cmk_has_api_key.stdout | length == 0 and not cmk_bootstrap
+
+- name: "CMK: Set up cloudmonkey"
+  shell: "cmk sync"
+  changed_when: false # don't care if this changes, not easy to detect
+
+- name: "Set configuration options"
+  include_tasks: "cloudstack-set-config.yml"
+  vars:
+    cmk_config_key: "{{ item.key }}"
+    cmk_config_val: "{{ item.val }}"
+  with_items:
+    - { key: "cpu.overprovisioning.factor",     val: "5" }
+    - { key: "storage.overprovisioning.factor", val: "10" }
+    - { key: "mem.overprovisioning.factor",     val: "1" }
+    - { key: "secstorage.vm.mtu.size",          val: "{{ ansible_facts[cloudstack_mgmt_interface]['mtu']|default(1500) }}" }
+    - { key: "management.network.cidr",         val: "{{ cloudstack_management_subnet }}" }
+    - { key: "host",                            val: "{{ cloudstack_management_ips | join(',') }}" }
+  run_once: true
+
+# Hack since we need to restart on all nodes, but the variable that gets set
+# ends up only being visible on one node.
+- name: "After configuration changes, may need to restart"
+  run_once: true
+  when: cmk_config_changed|default(false)
+  service:
+    name: "cloudstack-management"
+    state: "restarted"
+  delegate_to: "{{ item }}"
+  with_items: "{{ groups['cloudstack_mgmt'] }}"
+
+- name: "Make sure management nodes are back online"
+  ansible.builtin.wait_for:
+    port: 8080
+    delay: 5
