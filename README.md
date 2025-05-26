@@ -2,7 +2,7 @@
 
 Author: Brad House<br/>
 License: MIT<br/>
-Original Repository: https://github.com/bradh352/ansible-scripts/tree/master/roles/service_ceph
+Original Repository: https://github.com/bradh352/ansible-role-service-cloudstack
 
 ## Overview
 
