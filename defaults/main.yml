@@ -1,2 +1,4 @@
 ---
 cloudstack_db_user: cloudstack
+cloudstack_cpu_overprovision: 4
+cloudstack_disk_overprovision: 10

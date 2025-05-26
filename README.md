@@ -71,6 +71,10 @@ database is always `cloud_usage`.  There is no ability to change these.
   with the management nodes.  This is typically not the same interface used
   for public communication to the management nodes or even SSH access to the
   hypervisor nodes, and for this reason can have Jumbo frames enabled.
+- `cloudstack_cpu_overprovision`: Multiplier used for allowing CPU
+  overprovisioning.  Default 4.
+- `cloudstack_disk_overprovision`: Multiplier used for allowing Disk
+  overprovisioning.  Default 10.
 
 ### Variables for Configuring Cloudstack
 

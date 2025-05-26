@@ -85,8 +85,8 @@
     cmk_config_key: "{{ item.key }}"
     cmk_config_val: "{{ item.val }}"
   with_items:
-    - { key: "cpu.overprovisioning.factor",     val: "5" }
-    - { key: "storage.overprovisioning.factor", val: "10" }
+    - { key: "cpu.overprovisioning.factor",     val: "{{ cloudstack_cpu_overprovision }}" }
+    - { key: "storage.overprovisioning.factor", val: "{{ cloudstack_disk_overprovision }}" }
     - { key: "mem.overprovisioning.factor",     val: "1" }
     - { key: "secstorage.vm.mtu.size",          val: "{{ ansible_facts[cloudstack_mgmt_interface]['mtu']|default(1500) }}" }
     - { key: "management.network.cidr",         val: "{{ cloudstack_management_subnet }}" }
