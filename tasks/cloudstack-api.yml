@@ -67,6 +67,13 @@
   when: cmk_has_api_key.stdout | length == 0 and not cmk_bootstrap
   delegate_to: "{{ cmk_bootstrap_node }}"
 
+- name: "CMK: ensure config directory exists"
+  file:
+    path: /root/.cmk
+    state: directory
+    mode: "770"
+    owner: root
+
 - name: "CMK: Install configuration"
   copy:
     dest: "/root/.cmk/config"
