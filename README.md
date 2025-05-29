@@ -93,10 +93,16 @@ database is always `cloud_usage`.  There is no ability to change these.
   - `domain`. Optional. Network domain name for the networks in the zone.
   - `subnet`. Optional. Default subnet with mask for any private networks
     created. They can overlap from network to network. E.g. `10.1.1.0/24`.
-  - `networks`: Physical networks defined in this zone.
-    - `management`: TBD. Required.
-    - `public`: TBD. Required.
-    - `guest`: TBD. Required.
+  - `networks`: List of physical networks defined in this zone.  Must have at
+    least 3 networks, one of each `management`, `public`, and `guest`.
+    - `name`: Required. Name of the network.
+    - `usage`: Required. Values: `management`, `public`, or `guest`.
+    - `isolation`: Required. Values: `VLAN` or `VXLAN`.
+    - `subnet`: Required. e.g. `192.168.1.0/24`
+    - `bridge`: Required. Name of bridge interface on host to associate with
+      this network.
+    - `vni`: Optional. If untagged, leave blank.  Otherwise is the VLAN or
+      VXLAN vni.
   - `pods`: Required. List of PODs.  PODs are an organizational unit that are
     not directly visible to end users.  Often a pod represents a rack or row
     and typically all hosts in the POD will share the same subnet.  It is

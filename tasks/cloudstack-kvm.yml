@@ -64,11 +64,27 @@
     line: "{{ public_key['content'] | b64decode }}"
   when: not authorized_keys.stat.exists
 
+- name: "Calculate reserved memory"
+  set_fact:
+    reserved_mem: >-
+      {%- set ceph_mon   = (2000 if inventory_hostname in groups["ceph_" + ceph_cluster_name|default("") + "_mon"]|default([]) else 0) %}
+      {%- set ceph_mds   = (2000 if inventory_hostname in groups["ceph_" + ceph_cluster_name|default("") + "_mds"]|default([]) else 0) %}
+      {%- set ceph_osd   = (2000 if inventory_hostname in groups["ceph_" + ceph_cluster_name|default("") + "_osd"]|default([]) else 0) %}
+      {%- set mariadb    = (mariadb_buffer_pool_size|default(4096) if mariadb_cluster_name is not defined else 0) %}
+      {%- set cloudstack = (2048 if inventory_hostname in groups["cloudstack_mgmt"]|default("") else 0) %}
+      {{ ceph_mon + ceph_mds + ceph_osd + mariadb + cloudstack }}
+
 - name: "cloudstack agent set cpu model"
   lineinfile:
     path: /etc/cloudstack/agent/agent.properties
-    regexp: '^#guest\.cpu\.mode=.*'
-    line: "guest.cpu.mode=host-model"
+    regexp: "^#?{{ item.key | replace('.', '\\.') }} ?= ?.*"
+    line: "{{ item.key }}={{ item.val }}"
+  with_items:
+    - { key: 'guest.cpu.mode',             val: 'host-model' }
+    - { key: 'vm.memballoon.disable',      val: 'false' }
+    - { key: 'vm.memballoon.stats.period', val: '10' }
+    - { key: 'libvirt.events.enabled',     val: 'true' }
+    - { key: 'host.reserved.mem.mb',       val: "{{ reserved_mem }}" }
 
 - name: "setup libvirt for cloudstack"
   lineinfile:
