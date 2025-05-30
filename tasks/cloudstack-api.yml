@@ -103,7 +103,7 @@
     - { key: "kvm.snapshot.enabled",            val: "true" }
     - { key: "kvm.auto.convergence",            val: "true" }
     - { key: "kvm.storage.pool.io.policy",      val: "io_uring" }
-    - { key: "mem.overprovisioning.factor",     val: "2" }
+    - { key: "mem.overprovisioning.factor",     val: "1" }
     - { key: "vm.min.memory.equals.memory.divided.by.mem.overprovisioning.factor", val: "false" }
   run_once: true
 
