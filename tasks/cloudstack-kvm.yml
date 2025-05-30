@@ -72,7 +72,7 @@
       {%- set ceph_osd   = (2000 if inventory_hostname in groups["ceph_" + ceph_cluster_name|default("") + "_osd"]|default([]) else 0) %}
       {%- set mariadb    = (mariadb_buffer_pool_size|default(4096) if mariadb_cluster_name is not defined else 0) %}
       {%- set cloudstack = (2048 if inventory_hostname in groups["cloudstack_mgmt"]|default("") else 0) %}
-      {{ ceph_mon + ceph_mds + ceph_osd + mariadb + cloudstack }}
+      {{- ceph_mon + ceph_mds + ceph_osd + mariadb + cloudstack -}}
 
 - name: "cloudstack agent set cpu model"
   lineinfile:

@@ -9,4 +9,7 @@
     name: ufw
     state: restarted
 
-
+- name: "cloudstack_agent_restart"
+  service:
+    name: cloudstack-agent
+    state: restarted
