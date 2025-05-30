@@ -63,6 +63,8 @@
     login_user: root
     login_password: "{{ mariadb_root_password }}"
     check_implicit_admin: true
+    encoding: utf8mb4
+    collation: utf8mb4_unicode_ci
     state: present
   run_once: true
 
@@ -73,6 +75,8 @@
     login_user: root
     login_password: "{{ mariadb_root_password }}"
     check_implicit_admin: true
+    encoding: utf8mb4
+    collation: utf8mb4_unicode_ci
     state: present
   run_once: true
 
