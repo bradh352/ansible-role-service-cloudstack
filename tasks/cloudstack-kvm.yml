@@ -85,6 +85,8 @@
     - { key: 'vm.memballoon.stats.period', val: '10' }
     - { key: 'libvirt.events.enabled',     val: 'true' }
     - { key: 'host.reserved.mem.mb',       val: "{{ reserved_mem }}" }
+    - { key: "vm.rng.enable",              val: "true" }
+  notify: cloudstack_agent_restart
 
 - name: "setup libvirt for cloudstack"
   lineinfile:
