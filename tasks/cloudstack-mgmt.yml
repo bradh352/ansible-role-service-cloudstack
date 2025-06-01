@@ -199,7 +199,7 @@
     - { key: "db.usage.connectionTimeout", val: "30000" }
     - { key: "db.cloud.maxWait", val: "60000" } # Maximum age of connection
     - { key: "db.usage.maxWait", val: "60000" }
-  notify: "{{ 'cloudstack_mgmt_restart' when not (db_config.changed or cloudstack_db_info.databases['cloud'].tables == 0) else omit }}"
+  notify: "{{ 'cloudstack_mgmt_restart' if not (db_config.changed or cloudstack_db_info.databases['cloud'].tables == 0) else omit }}"
 
 - name: "Determine if cloudstack is running"
   shell: systemctl is-active cloudstack-management
