@@ -92,19 +92,20 @@
     cmk_config_key: "{{ item.key }}"
     cmk_config_val: "{{ item.val }}"
   with_items:
-    - { key: "cpu.overprovisioning.factor",     val: "{{ cloudstack_cpu_overprovision }}" }
-    - { key: "storage.overprovisioning.factor", val: "{{ cloudstack_disk_overprovision }}" }
-    - { key: "secstorage.vm.mtu.size",          val: "{{ ansible_facts[cloudstack_mgmt_interface]['mtu']|default(1500) }}" }
-    - { key: "management.network.cidr",         val: "{{ cloudstack_management_subnet }}" }
-    - { key: "host",                            val: "{{ cloudstack_management_ips | join(',') }}" }
-    - { key: "enable.dynamic.scale.vm",         val: "true" }
-    - { key: "vm.stats.interval",               val: "60000" }
-    - { key: "kvm.vmstoragesnapshot.enabled",   val: "true" }
-    - { key: "kvm.snapshot.enabled",            val: "true" }
-    - { key: "kvm.auto.convergence",            val: "true" }
-    - { key: "kvm.storage.pool.io.policy",      val: "io_uring" }
-    - { key: "mem.overprovisioning.factor",     val: "2" }
+    - { key: "cpu.overprovisioning.factor",      val: "{{ cloudstack_cpu_overprovision }}" }
+    - { key: "storage.overprovisioning.factor",  val: "{{ cloudstack_disk_overprovision }}" }
+    - { key: "secstorage.vm.mtu.size",           val: "{{ ansible_facts[cloudstack_mgmt_interface]['mtu']|default(1500) }}" }
+    - { key: "management.network.cidr",          val: "{{ cloudstack_management_subnet }}" }
+    - { key: "host",                             val: "{{ cloudstack_management_ips | join(',') }}" }
+    - { key: "enable.dynamic.scale.vm",          val: "true" }
+    - { key: "vm.stats.interval",                val: "60000" }
+    - { key: "kvm.vmstoragesnapshot.enabled",    val: "true" }
+    - { key: "kvm.snapshot.enabled",             val: "true" }
+    - { key: "kvm.auto.convergence",             val: "true" }
+    - { key: "kvm.storage.pool.io.policy",       val: "io_uring" }
+    - { key: "mem.overprovisioning.factor",      val: "2" }
     - { key: "vm.min.memory.equals.memory.divided.by.mem.overprovisioning.factor", val: "false" }
+    - { key: "expunged.resources.purge.enabled", val: "true" }
   run_once: true
 
 # Hack since we need to restart on all nodes, but the variable that gets set
