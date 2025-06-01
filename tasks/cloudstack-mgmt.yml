@@ -80,7 +80,7 @@
     state: present
   run_once: true
 
-- name: Create db user for cloudstack
+- name: Create db user (localhost) for cloudstack
   community.mysql.mysql_user:
     login_user: root
     login_password: "{{ mariadb_root_password }}"
@@ -95,7 +95,28 @@
       'cloud_usage.*': 'ALL,GRANT'
       '*.*': 'PROCESS'
     host: "{{ item }}"
-  with_items: "{{ [ 'localhost', '127.0.0.1', '::1' ] + cloudstack_db_src_ips }}"
+  with_items:
+    - "localhost"
+    - "127.0.0.1"
+    - "::1"
+  run_once: true
+
+- name: Create db user (self) for cloudstack
+  community.mysql.mysql_user:
+    login_user: root
+    login_password: "{{ mariadb_root_password }}"
+    check_implicit_admin: true
+    column_case_sensitive: false
+    login_unix_socket: "{{ mariadb_sock }}"
+    name: "{{ cloudstack_db_user }}"
+    password: "{{ cloudstack_db_password }}"
+    state: present
+    priv:
+      'cloud.*': 'ALL,GRANT'
+      'cloud_usage.*': 'ALL,GRANT'
+      '*.*': 'PROCESS'
+    host: "{{ item }}"
+  with_items: "{{ cloudstack_db_src_ips }}"
   throttle: 1
 
 - name: Determine if cloudstack database is already initialized
@@ -180,11 +201,15 @@
 - name: "Bring up cloudstack management on secondary nodes"
   when: (cloudstack_running.rc != 0 or db_config.changed or not db_file.stat.exists or cloudstack_db_info.databases["cloud"].tables == 0) and inventory_hostname != cloudstack_bootstrap_node|default("")
   throttle: 1
-  block:
-  - name: "Setup cloudstack management"
-    shell: "cloudstack-setup-management && sleep 30"
-  - name: "Wait for initialization"
-    ansible.builtin.wait_for:
-      port: 8080
-      delay: 10
+  script: "cloudstack_mgmt_start.sh 1"
 
+- name: "Link Usage Key"
+  file:
+    src: /etc/cloudstack/management/key
+    dest: /etc/cloudstack/usage/key
+    state: link
+
+- name: "Ensure Usage server is started"
+  service:
+    name: cloudstack-usage
+    state: started
