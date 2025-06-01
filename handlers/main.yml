@@ -13,3 +13,7 @@
   service:
     name: cloudstack-agent
     state: restarted
+
+- name: "cloudstack_mgmt_restart"
+  throttle: 1
+  script: "cloudstack_mgmt_start.sh 1"

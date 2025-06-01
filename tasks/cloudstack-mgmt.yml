@@ -148,16 +148,6 @@
     - "db.cloud.username={{ cloudstack_db_user }}"
     - "db.cloud.host={{ mariadb_cluster_vips[0].split('/')[0] }}"
     - "cluster.node.IP={{ ansible_facts[cloudstack_mgmt_interface]['ipv4']['address'] }}"
-    - "db.cloud.minIdleConnections=0" # Minimum number of idle DB connections to always hold open
-    - "db.usage.minIdleConnections=0"
-    - "db.cloud.maxIdleConnections=5" # Maximum number of idle DB connections to have open
-    - "db.usage.maxIdleConnections=5"
-    - "db.cloud.keepAliveTime=15000" # Keepalive interval for checking connection
-    - "db.usage.keepAliveTime=15000"
-    - "db.cloud.connectionTimeout=30000" # Max time will wait for connection from pool
-    - "db.usage.connectionTimeout=30000"
-    - "db.cloud.maxWait=60000" # Maximum age of connection
-    - "db.usage.maxWait=60000"
 
 - name: "Ensure cloudstack services are stopped if configuration changed"
   service:
@@ -192,6 +182,24 @@
     - 8250
     - 8443
     - 9090
+
+- name: Update keepalive database parameters
+  lineinfile:
+    dest: "/etc/cloudstack/management/db.properties"
+    regexp: "^{{ item.key }}=.*"
+    line: "{{ item.key }}={{ item.val }}"
+  with_items:
+    - { key: "db.cloud.minIdleConnections", val: "0" } # Minimum number of idle DB connections to always hold open
+    - { key: "db.usage.minIdleConnections", val: "0" }
+    - { key: "db.cloud.maxIdleConnections", val: "5" } # Maximum number of idle DB connections to have open
+    - { key: "db.usage.maxIdleConnections", val: "5" }
+    - { key: "db.cloud.keepAliveTime", val: "15000" } # Keepalive interval for checking connection
+    - { key: "db.usage.keepAliveTime", val: "15000" }
+    - { key: "db.cloud.connectionTimeout", val: "30000" } # Max time will wait for connection from pool
+    - { key: "db.usage.connectionTimeout", val: "30000" }
+    - { key: "db.cloud.maxWait", val: "60000" } # Maximum age of connection
+    - { key: "db.usage.maxWait", val: "60000" }
+  notify: "{{ 'cloudstack_mgmt_restart' when not (db_config.changed or cloudstack_db_info.databases['cloud'].tables == 0) else omit }}"
 
 - name: "Determine if cloudstack is running"
   shell: systemctl is-active cloudstack-management
