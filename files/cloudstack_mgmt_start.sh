@@ -18,7 +18,7 @@ cloudstack-setup-management
 start=`date +%s`
 sleep ${DELAY}
 while ! nc -q 0 -v localhost 8080 < /dev/null > /dev/null 2>&1 ; do
-  if ! systemctl is-active cloudstack-management > /dev/null ; then
+  if ! systemctl is-active cloudstack-management > /dev/null 2>&1 ; then
     echo "Cloudstack Management unexpectedly quit"
     exit 1
   fi
