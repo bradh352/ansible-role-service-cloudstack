@@ -4,6 +4,7 @@
     pkg:
       - "cloudstack-management"
       - "cloudstack-usage"
+      - "netcat-openbsd"
     state: present
 
 
