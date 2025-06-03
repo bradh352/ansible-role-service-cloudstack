@@ -145,7 +145,7 @@
 
 - name: "Configure for vxlan evpn"
   copy:
-    src: modifyvxlan-evpn.sh
+    src: modifyvxlan-evpn-svd.sh
     dest: /usr/share/modifyvxlan.sh
     mode: "755"
 
