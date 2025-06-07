@@ -207,6 +207,19 @@
   failed_when: false
   register: cloudstack_running
 
+- name: "Determine if cloudstack is in a good state"
+  shell: "curl -s -o /dev/null -L -w '%{http_code}' http://localhost:8080/"
+  failed_when: false
+  changed_when: false
+  register: cloudstack_http_code
+  when: cloudstack_running.rc == 0
+
+- name: "Shutdown cloudstack management that is in a bad state"
+  service:
+    name: cloudstack-management
+    state: stopped
+  when: cloudstack_running.rc == 0 and cloudstack_http_code.stdout|default("503") != "200"
+
 - name: "Bring up cloudstack management on first node"
   shell: cloudstack-setup-management
   when: inventory_hostname == cloudstack_bootstrap_node|default("")
@@ -217,8 +230,8 @@
     delay: 10
   when: inventory_hostname == cloudstack_bootstrap_node|default("")
 
-- name: "Bring up cloudstack management on secondary nodes"
-  when: (cloudstack_running.rc != 0 or db_config.changed or not db_file.stat.exists or cloudstack_db_info.databases["cloud"].tables == 0) and inventory_hostname != cloudstack_bootstrap_node|default("")
+- name: "Bring up cloudstack management (non-bootstrap)"
+  when: (cloudstack_running.rc != 0 or cloudstack_http_code.stdout|default("503") != "200" or db_config.changed or not db_file.stat.exists or cloudstack_db_info.databases["cloud"].tables == 0) and inventory_hostname != cloudstack_bootstrap_node|default("")
   throttle: 1
   script: "cloudstack_mgmt_start.sh 1"
 
