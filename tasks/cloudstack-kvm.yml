@@ -94,7 +94,7 @@
     line: "{{ item.key }} = {{ item.val }}"
     regexp: "^#?{{ item.key }} *=.*"
   with_items:
-    - { key: "listen_tls", val: "1" }
+    # - { key: "listen_tls", val: "0" }  # Don't toggle this
     - { key: "listen_tcp", val: "0" }
     - { key: "tls_port", val: '"16514"' }
     - { key: "tcp_port", val: '"16509"' }
