@@ -35,7 +35,7 @@
 
 - name: Configure for Cloudstack KVM Hypervisor
   import_tasks: "cloudstack-kvm.yml"
-  when: inventory_hostname in groups["cloudstack_kvm"]
+  when: inventory_hostname in groups["cloudstack_kvm"] or inventory_hostname in groups["cloudstack_lxc"]
 
 - name: Configure SystemVM Template
   import_tasks: "cloudstack-systemvm.yml"

@@ -32,7 +32,6 @@
     - "/usr/sbin/service"
     - "/usr/sbin/update-rc.d"
 
-
 - name: See if public key is registered
   stat:
     path: /home/cloudstack/.ssh/authorized_keys
@@ -80,6 +79,7 @@
     regexp: "^#?{{ item.key | replace('.', '\\.') }} ?= ?.*"
     line: "{{ item.key }}={{ item.val }}"
   with_items:
+    - { key: 'hypervisor.type',            val: ('lxc' if host in cloudstack_lxc|default({}) else 'kvm') }
     - { key: 'guest.cpu.mode',             val: 'host-model' }
     - { key: 'vm.memballoon.disable',      val: 'false' }
     - { key: 'vm.memballoon.stats.period', val: '10' }
