@@ -9,6 +9,9 @@
     name: ufw
     state: restarted
 
+- name: "ufw_reload"
+  shell: "ufw reload"
+
 - name: "cloudstack_agent_restart"
   service:
     name: cloudstack-agent
