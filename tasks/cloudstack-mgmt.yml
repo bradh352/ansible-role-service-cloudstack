@@ -241,7 +241,7 @@
     dest: /etc/cloudstack/usage/key
     state: link
 
-- name: "UFW: Redirect 80 -> 8080"
+- name: "UFW: Redirect 80 -> 8080, 443 -> 8443"
   blockinfile:
     path: /etc/ufw/before.rules
     marker: "# {mark} ANSIBLE CLOUDSTACK MANAGED NAT RULES"
