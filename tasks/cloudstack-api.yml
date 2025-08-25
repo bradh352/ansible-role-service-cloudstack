@@ -108,6 +108,26 @@
     - { key: "vm.min.memory.equals.memory.divided.by.mem.overprovisioning.factor", val: "false" }
     - { key: "expunged.resources.purge.enabled", val: "true" }
     - { key: "endpoint.url",                     val: "{{ 'http://' ~ cloudstack_hostname|default('localhost') ~ '/client/api' }}" }
+    - { key: "saml2.enabled",                    val: "{{ 'true' if cloudstack_saml_enable else 'false' }}" }
+  run_once: true
+
+- name: "Set SAML options"
+  include_tasks: "cloudstack-set-config.yml"
+  vars:
+    cmk_config_key: "{{ item.key }}"
+    cmk_config_val: "{{ item.val }}"
+  when: cloudstack_saml_enable
+  with_items:
+    - { key: "saml2.append.idpdomain", val: "false" }
+    - { key: "saml2.check.signature",  val: "true" }
+    - { key: "saml2.default.idpid",    val: "{{ cloudstack_saml_metadata_url | urlsplit('hostname') }}" }
+    - { key: "saml2.idp.metadata.url", val: "{{ cloudstack_saml_metadata_url }}" }
+    - { key: "saml2.redirect.url",     val: "{{ 'http://' ~ cloudstack_hostname|default('localhost') ~ '/client' }}" }
+    - { key: "saml2.sigalg",           val: "SHA256" }
+    - { key: "saml2.sp.id",            val: "org.apache.cloudstack" }
+    - { key: "saml2.sp.slo.url",       val: "{{ 'http://' ~ cloudstack_hostname|default('localhost') ~ '/client' }}" }
+    - { key: "saml2.sp.sso.url",       val: "{{ 'http://' ~ cloudstack_hostname|default('localhost') ~ '/client/api?command=samlSso' }}" }
+    - { key: "saml2.user.attribute",   val: "{{ cloudstack_saml_user_attribute }}" }
   run_once: true
 
 # Hack since we need to restart on all nodes, but the variable that gets set

@@ -45,3 +45,7 @@
 - name: Configure via CloudMonkey
   import_tasks: "cloudstack-api.yml"
   when: inventory_hostname in groups["cloudstack_mgmt"]
+
+- name: Sync users/projects from LDAP
+  import_tasks: "cloudstack-ldapsync.yml"
+  when: inventory_hostname in groups["cloudstack_mgmt"] and cloudstack_saml_enable

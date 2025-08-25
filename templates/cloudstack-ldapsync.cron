@@ -1,0 +1,10 @@
+{# Execute every hour, but skew every 15 minutes per node so they don't run in parallel. #}
+{# This assumes at most 3 nodes, otherwise other nodes will start executing in parallel. #}
+{% set ns = namespace(index=0) %}
+{% for host in groups['cloudstack_mgmt'] %}
+{%   if host == inventory_hostname %}
+{%     set ns.index = loop.index0 %}
+{%   endif %}
+{% endfor %}
+{% set minute=(ns.index % 4) * 15 %}
+{{ minute }} * * * * root /usr/local/bin/cloudstack-ldapsync.py

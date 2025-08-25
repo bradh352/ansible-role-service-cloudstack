@@ -78,6 +78,46 @@ database is always `cloud_usage`.  There is no ability to change these.
   overprovisioning.  Default 4.
 - `cloudstack_disk_overprovision`: Multiplier used for allowing Disk
   overprovisioning.  Default 10.
+- `cloudstack_saml_enable`: Boolean.  Whether or not to use SAML auth for users.
+  Defaults to `false`. Please see the
+  [SAML / External IDP](#saml---external-idp) section for more information.
+  The remaining `cloudstack_saml_*` configuration values should be set when this
+  is enabled.
+- `cloudstack_saml_metadata_url`: Required. Metadata URL for SAML
+  authentication.
+- `cloudstack_saml_user_attribute`: Attribute, which must be configured within
+  the SAML provider, which will contain the username used for authentication.
+  Cloudstack does not use the SAML NameID for this purpose.  This defaults to
+  `uid` if not specified.
+- `cloudstack_saml_ldap_server`: Required. Server for LDAP syncing of
+  users / groups.
+- `cloudstack_saml_use_ssl`: Boolean, whether or not SSL / TLS is required.
+  Defaults to `true`.
+- `cloudstack_saml_binddn`: Required. Bind DN for requesting users/groups.
+- `cloudstack_saml_bindpass`: Required. Bind DN's password for requesting
+  users/groups.
+- `cloudstack_saml_userdn`: Required. User DN base for LDAP.
+- `cloudstack_saml_groupdn`: Required. Group DN base for LDAP.
+- `cloudstack_saml_ignore_users`: List of users to NOT import from upstream IDP.
+- `cloudstack_saml_ignore_cloudstack_users`: List of users to ignore within
+  cloudstack when considering what users exist as well as group membership.
+- `cloudstack_saml_groups_allowed`: Required.  List of groups to use for
+  determining if the users within them are to be added to cloudstack.
+- `cloudstack_saml_admin_groups`: List of groups in LDAP that will be translated
+  to cloudstack administrators. Groups listed here do *not* need to also be
+  added to `groups_allowed`.
+- `cloudstack_saml_project_groups`: List of groups for which a project will be
+  created, and the users within will be added to the project.  Groups listed
+  here do *not* need to also be added to `groups_allowed`.
+- `cloudstack_saml_attr_username`: LDAP attribute for username, defaults to
+  `uid`.
+- `cloudstack_saml_attr_fname`: LDAP attribute for first name, defaults to
+  `givenName`.
+- `cloudstack_saml_attr_lname`: LDAP attribute for last name, defaults to `sn`.
+- `cloudstack_saml_attr_email`: LDAP attribute for email, defaults to `mail`.
+- `cloudstack_saml_attr_group`: LDAP attribute for group name, defaults to `cn`.
+- `cloudstack_saml_attr_group_members`: LDAP attribute containing group members,
+  defaults to `uniqueMember`.
 
 ### Variables for Configuring Cloudstack
 
@@ -122,6 +162,22 @@ database is always `cloud_usage`.  There is no ability to change these.
     - `clusters`: Required. List of clusters.  A cluster is a grouping of hosts
       within a POD. The hosts must be identical (CPU, Memory).
       - `name`: Required. Cluster name.
+
+## SAML / External IDP Authentication
+
+SAML Authentication in Cloudstack has 2 parts.  The first part is enabling the
+SAML provider, pointing it to the appropriate SAML Metadata endpoint.  On the
+IDP side, the Entity ID or SP ID must be set to `org.apache.cloudstack` and a
+custom attribute must be specified to advertise the username back to cloudstack.
+The attribute name is defined in `user_attribute` above.  The
+`cloudstack_hostname` must also be configured to an appropriate value due to
+the redirects. However this may be an ip address if needed during testing.
+
+The second part is syncing and associating users in cloudstack with the external
+IDP.  The syncing portion assumes that LDAP is available from the IDP for this
+purpose.  LDAP authentication is not used because the IDP may require 2FA, and
+does not provide enough flexibility for assigning users to projects.
+
 
 ## Troubleshooting / Research
 

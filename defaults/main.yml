@@ -2,3 +2,16 @@
 cloudstack_db_user: cloudstack
 cloudstack_cpu_overprovision: 4
 cloudstack_disk_overprovision: 10
+cloudstack_saml_enable: false
+cloudstack_saml_user_attribute: "uid"
+cloudstack_saml_use_ssl: true
+cloudstack_saml_attr_username: "uid"
+cloudstack_saml_attr_fname: "givenName"
+cloudstack_saml_attr_lname: "sn"
+cloudstack_saml_attr_email: "mail"
+cloudstack_saml_attr_group: "cn"
+cloudstack_saml_attr_group_members: "uniqueMember"
+cloudstack_saml_ignore_cloudstack_users:
+  - "admin"
+cloudstack_saml_project_groups: []
+cloudstack_saml_admin_groups: []
