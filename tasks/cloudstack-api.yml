@@ -99,6 +99,7 @@
     - { key: "management.network.cidr",          val: "{{ cloudstack_management_subnet }}" }
     - { key: "host",                             val: "{{ cloudstack_management_ips | join(',') }}" }
     - { key: "enable.dynamic.scale.vm",          val: "true" }
+    - { key: "ipv6.offering.enabled",            val: "true" }
     - { key: "vm.stats.interval",                val: "60000" }
     - { key: "kvm.vmstoragesnapshot.enabled",    val: "true" }
     - { key: "kvm.snapshot.enabled",             val: "true" }
