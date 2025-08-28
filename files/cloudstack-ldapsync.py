@@ -584,25 +584,26 @@ def fetch_cloudstack(
 
     groups = {}
     projects = cs_client.listProjects(listall=True)
-    for project in projects["project"]:
-        accounts = cs_client.listProjectAccounts(projectid=project["id"])
-        members = {}
-        # This lists
-        for account in accounts["projectaccount"]:
-            # Yes, this is an odd format due to an account potentially having alias users.  We don't support that, so
-            # we always just use the first index.
-            username = account["user"][0]["account"]
-            if username in ignore_users:
-                continue
-            members[username] = None
+    if projects.get("project"):
+        for project in projects["project"]:
+            accounts = cs_client.listProjectAccounts(projectid=project["id"])
+            members = {}
+            # This lists
+            for account in accounts["projectaccount"]:
+                # Yes, this is an odd format due to an account potentially having alias users.  We don't support that, so
+                # we always just use the first index.
+                username = account["user"][0]["account"]
+                if username in ignore_users:
+                    continue
+                members[username] = None
 
-        group = Group(
-            uuid=project["id"],
-            name=project["name"],
-            members=members,
-            enabled=True if project["state"] == "Active" else False,
-        )
-        groups[group.name] = group
+            group = Group(
+                uuid=project["id"],
+                name=project["name"],
+                members=members,
+                enabled=True if project["state"] == "Active" else False,
+            )
+            groups[group.name] = group
 
     roles = {}
     csroles = cs_client.listRoles()
@@ -615,13 +616,14 @@ def fetch_cloudstack(
 
     idps = {}
     csidps = cs_client.listIdps()
-    for csidp in csidps["idp"]:
-        idp = IDP(
-            id=csidp["id"],
-            orgname=csidp["orgName"],
-            orgurl=csidp.get("orgUrl")
-        )
-        idps[idp.orgname] = idp
+    if csidps.get("idp"):
+        for csidp in csidps["idp"]:
+            idp = IDP(
+                id=csidp["id"],
+                orgname=csidp["orgName"],
+                orgurl=csidp.get("orgUrl")
+            )
+            idps[idp.orgname] = idp
 
     return users, groups, roles, idps
 
