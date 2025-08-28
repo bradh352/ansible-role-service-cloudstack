@@ -3,7 +3,8 @@
   ansible.builtin.apt:
     pkg:
       - "cloudstack-agent"
-    state: present
+    state: latest
+  notify: cloudstack_agent_restart
 
 - name: Create the cloudstack user
   user:

@@ -136,13 +136,7 @@
 - name: "After configuration changes, may need to restart"
   run_once: true
   when: cmk_config_changed|default(false)
-  service:
-    name: "cloudstack-management"
-    state: "restarted"
+  script: "cloudstack_mgmt_start.sh 1"
   delegate_to: "{{ item }}"
   with_items: "{{ groups['cloudstack_mgmt'] }}"
 
-- name: "Make sure management nodes are back online"
-  ansible.builtin.wait_for:
-    port: 8080
-    delay: 5

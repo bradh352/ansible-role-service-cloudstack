@@ -24,6 +24,8 @@
 
 - name: "LDAPSYNC: Perform sync"
   shell: /usr/local/bin/cloudstack-ldapsync.py
+  register: sync
+  changed_when: sync.stdout_lines | count > 1
   run_once: true
 
 - name: "LDAPSYNC: Add cron task"

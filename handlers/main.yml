@@ -13,6 +13,7 @@
   shell: "ufw reload"
 
 - name: "cloudstack_agent_restart"
+  throttle: 1
   service:
     name: cloudstack-agent
     state: restarted

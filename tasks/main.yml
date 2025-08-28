@@ -37,10 +37,11 @@
   import_tasks: "cloudstack-agent.yml"
   when: inventory_hostname in groups["cloudstack_kvm"]
 
-- name: Configure SystemVM Template
-  import_tasks: "cloudstack-systemvm.yml"
-  when: inventory_hostname in groups["cloudstack_mgmt"]
-  run_once: true
+# SystemVM is supposedly bundled with the official packages these days so no need to download and install.
+#- name: Configure SystemVM Template
+#  import_tasks: "cloudstack-systemvm.yml"
+#  when: inventory_hostname in groups["cloudstack_mgmt"]
+#  run_once: true
 
 - name: Configure via CloudMonkey
   import_tasks: "cloudstack-api.yml"

@@ -51,8 +51,7 @@ database is always `cloud_usage`.  There is no ability to change these.
 
 ### Variables used by Management nodes
 
-- `cloudstack_systemvm`: Required. Path to download systemvm,
-  E.g. http://download.cloudstack.org/systemvm/4.20/systemvmtemplate-4.20.0-x86_64-kvm.qcow2.bz2
+
 - `mariadb_root_password`: Required. Same password as used during deployment of
   mariadb. Currently assumes MariaDB is running on the same node as part of the
   cluster.  Should be stored in the vault.
@@ -118,6 +117,11 @@ database is always `cloud_usage`.  There is no ability to change these.
 - `cloudstack_saml_attr_group`: LDAP attribute for group name, defaults to `cn`.
 - `cloudstack_saml_attr_group_members`: LDAP attribute containing group members,
   defaults to `uniqueMember`.
+
+### Legacy
+- `cloudstack_systemvm`: Path to download systemvm,
+  E.g. http://download.cloudstack.org/systemvm/4.20/systemvmtemplate-4.20.0-x86_64-kvm.qcow2.bz2
+  Supposedly no longer required as its bundled with the cloudstack-management package.
 
 ### Variables for Configuring Cloudstack
 

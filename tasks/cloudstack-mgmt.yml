@@ -5,8 +5,8 @@
       - "cloudstack-management"
       - "cloudstack-usage"
       - "netcat-openbsd"
-    state: present
-
+    state: latest
+  notify: cloudstack_mgmt_restart
 
 - name: "Determine mariadb unix socket path"
   set_fact:
