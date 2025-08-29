@@ -231,7 +231,7 @@ def cs_user_del(client: CloudStack, user: User, dry_run: bool):
     # Disable account first then delete.  Delete in theory could fail if the
     # account is a resource owner of something like a Project, which hopefully
     # won't actually happen.
-    client.disableAccount(id=user.account_uuid)
+    client.disableAccount(id=user.account_uuid, lock=False)
     client.deleteAccount(id=user.account_uuid)
 
 
