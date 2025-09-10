@@ -158,6 +158,12 @@
     - "cloudstack-usage"
   when: db_config.changed or not db_file.stat.exists or cloudstack_db_info.databases["cloud"].tables == 0
 
+- name: "Patch cloudstack-setup-databases regression in 4.21"
+  replace:
+    path: /usr/bin/cloudstack-setup-databases
+    regexp: 'if self\.areCloudDatabasesCreated\(\) and not self\.options\.forcerecreate:'
+    replace: 'if self.areCloudDatabasesCreated() and not self.options.forcerecreate and not self.options.schemaonly:'
+
 - name: Determine which node to use to set up cloudstack database
   set_fact:
     cloudstack_bootstrap_node: "{{ groups['cloudstack_mgmt'] | intersect(ansible_play_hosts) | sort | first }}"
