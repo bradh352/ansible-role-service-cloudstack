@@ -158,19 +158,13 @@
     - "cloudstack-usage"
   when: db_config.changed or not db_file.stat.exists or cloudstack_db_info.databases["cloud"].tables == 0
 
-- name: "Patch cloudstack-setup-databases regression in 4.21"
-  replace:
-    path: /usr/bin/cloudstack-setup-databases
-    regexp: 'if self\.areCloudDatabasesCreated\(\) and not self\.options\.forcerecreate:'
-    replace: 'if self.areCloudDatabasesCreated() and not self.options.forcerecreate and not self.options.schemaonly:'
-
 - name: Determine which node to use to set up cloudstack database
   set_fact:
     cloudstack_bootstrap_node: "{{ groups['cloudstack_mgmt'] | intersect(ansible_play_hosts) | sort | first }}"
   when: cloudstack_db_info.databases["cloud"].tables == 0
 
 - name: Setup cloudstack database on bootstrap node
-  shell: "cloudstack-setup-databases '{{ cloudstack_db_user }}:{{ cloudstack_db_password }}@{{ mariadb_cluster_vips[0].split('/')[0] }}' {{ '--schema-only' if cloudstack_db_info.databases['cloud'].tables == 0 else '' }} --mshost={{ ansible_facts[cloudstack_mgmt_interface]['ipv4']['address'] }} --encrypt-type=file --managementserver-secretkey='{{ cloudstack_mgmt_key }}' --database-secretkey='{{ cloudstack_db_key }}'"
+  shell: "cloudstack-setup-databases '{{ cloudstack_db_user }}:{{ cloudstack_db_password }}@{{ mariadb_cluster_vips[0].split('/')[0] }}' {{ '--schema-only --force-recreate' if cloudstack_db_info.databases['cloud'].tables == 0 else '' }} --mshost={{ ansible_facts[cloudstack_mgmt_interface]['ipv4']['address'] }} --encrypt-type=file --managementserver-secretkey='{{ cloudstack_mgmt_key }}' --database-secretkey='{{ cloudstack_db_key }}'"
   when: inventory_hostname == cloudstack_bootstrap_node|default("")
   run_once: true
 
