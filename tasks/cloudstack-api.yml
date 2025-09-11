@@ -3,6 +3,7 @@
   shell:  "grep ^apikey /root/.cmk/config | sed -E 's/.*=(.*)/\\1/' | sed -E 's/ //g'"
   delegate_to: "{{ item }}"
   ignore_unreachable: yes
+  ignore_errors: true
   failed_when: false
   changed_when: false
   no_log: true

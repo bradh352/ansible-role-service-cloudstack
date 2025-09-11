@@ -36,6 +36,7 @@
   delegate_to: "{{ item }}"
   delegate_facts: true
   ignore_unreachable: true
+  ignore_errors: true
   with_items: "{{ groups['cloudstack_mgmt'] }}"
 
 - name: "Determine management server ips"
