@@ -5,8 +5,17 @@
       - "cloudstack-management"
       - "cloudstack-usage"
       - "netcat-openbsd"
+      - "nginx"
+      - "python3-certbot"
+      - "python3-certbot-nginx"
     state: latest
   notify: cloudstack_mgmt_restart
+
+- name: "APT: Install cloudflare certbot provider"
+  ansible.builtin.apt:
+    pkg:
+      - "python3-certbot-dns-cloudflare"
+  when: cloudstack_dns_provider == "cloudflare"
 
 - name: "Determine mariadb unix socket path"
   set_fact:
@@ -181,7 +190,6 @@
   with_items:
     - 8080
     - 8250
-    - 8443
     - 9090
 
 - name: Update keepalive database parameters
@@ -242,7 +250,7 @@
     dest: /etc/cloudstack/usage/key
     state: link
 
-- name: "UFW: Redirect 80 -> 8080, 443 -> 8443"
+- name: "UFW: Disable: Redirect 80 -> 8080, 443 -> 8443 -- uses Nginx now"
   blockinfile:
     path: /etc/ufw/before.rules
     marker: "# {mark} ANSIBLE CLOUDSTACK MANAGED NAT RULES"
@@ -250,8 +258,8 @@
     block: |
       *nat
       :PREROUTING ACCEPT [0:0]
-      -A PREROUTING -p tcp --dport 80 -j REDIRECT --to-port 8080
-      -A PREROUTING -p tcp --dport 443 -j REDIRECT --to-port 8443
+      #-A PREROUTING -p tcp --dport 80 -j REDIRECT --to-port 8080
+      #-A PREROUTING -p tcp --dport 443 -j REDIRECT --to-port 8443
       COMMIT
   notify: ufw_reload
 
@@ -259,3 +267,77 @@
   service:
     name: cloudstack-usage
     state: started
+
+- name: "Ensure /etc/nginx/sites-enabled/default is commented out"
+  replace:
+    path: "/etc/nginx/sites-enabled/default"
+    regexp: "^(?!#)(.*)$"
+    replace: "#\\1"
+  notify: nginx_restart
+
+- name: "Install nginx configuration"
+  template:
+    src: nginx-cloudstack.j2
+    dest: /etc/nginx/sites-available/cloudstack
+    owner: root
+    mode: "644"
+  notify: nginx_restart
+
+- name: "Nginx: enable cloudstack"
+  file:
+    src: /etc/nginx/sites-available/cloudstack
+    dest: /etc/nginx/sites-enabled/cloudstack
+    state: link
+    owner: root
+  notify: nginx_restart
+
+- name: "CertBot: save cloudflare credentials"
+  copy:
+    dest: /etc/letsencrypt/cloudflare.ini
+    content: "dns_cloudflare_api_token = '{{ cloudstack_dns_apikey }}'"
+    owner: root
+    mode: "600"
+  when: cloudstack_dns_provider == "cloudflare"
+
+- name: "CertBot: save godaddy credentials"
+  copy:
+    dest: /etc/letsencrypt/godaddy.ini
+    content: 'dns_godaddy_api_token="{{ cloudstack_dns_apikey }}"'
+    owner: root
+    mode: "600"
+  when: cloudstack_dns_provider == "godaddy"
+
+- name: "CertBot: Godaddy: Install Scripts"
+  copy:
+    dest: "/usr/local/bin/{{ item }}"
+    src: "{{ item }}"
+    mode: "755"
+    owner: root
+  with_items:
+    - "godaddydnsauth.sh"
+    - "godaddydnsauthclean.sh"
+
+- name: "CertBot: Detect if we need to run"
+  shell: certbot certificates -d {{ cloudstack_hostname }}
+  register: certbot
+  changed_when: ('VALID' not in certbot.stdout)
+  failed_when: false
+
+- name: "CertBot: Cloudflare: get certificate"
+  shell: "certbot certonly --dns-cloudflare --dns-cloudflare-credentials /etc/letsencrypt/cloudflare.ini -d {{ cloudstack_hostname }} --agree-tos -n -m {{ cloudstack_dns_email }}"
+  when: cloudstack_dns_provider == "cloudflare" and "VALID" not in certbot.stdout
+  throttle: 1
+
+- name: "CertBot: Godaddy: get certificate"
+  shell: "certbot certonly --manual --preferred-challenges=dns --manual-auth-hook /usr/local/bin/godaddydnsauth.sh --manual-cleanup-hook /usr/local/bin/godaddydnsauthclean.sh -d {{ cloudstack_hostname }} --agree-tos -n -m {{ cloudstack_dns_email }}"
+  when: cloudstack_dns_provider == "godaddy" and "VALID" not in certbot.stdout
+  throttle: 1
+
+- name: "UFW: Enable Nginx Ports"
+  community.general.ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: tcp
+  with_items:
+    - 80
+    - 443

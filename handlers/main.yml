@@ -21,3 +21,8 @@
 - name: "cloudstack_mgmt_restart"
   throttle: 1
   script: "cloudstack_mgmt_start.sh 1"
+
+- name: "nginx_restart"
+  service:
+    name: nginx
+    state: restarted

@@ -51,7 +51,9 @@ database is always `cloud_usage`.  There is no ability to change these.
 
 ### Variables used by Management nodes
 
-
+- `cloudstack_hostname`: Hostname that users will access cloudstack through.
+  This will automatically update the `endpoint.url` setting like:
+  `https://{cloudstack_hostname}/client/api`.
 - `mariadb_root_password`: Required. Same password as used during deployment of
   mariadb. Currently assumes MariaDB is running on the same node as part of the
   cluster.  Should be stored in the vault.
@@ -70,13 +72,23 @@ database is always `cloud_usage`.  There is no ability to change these.
   with the management nodes.  This is typically not the same interface used
   for public communication to the management nodes or even SSH access to the
   hypervisor nodes, and for this reason can have Jumbo frames enabled.
-- `cloudstack_hostname`: Hostname that users will access cloudstack through.
-  This will automatically update the `endpoint.url` setting like:
-  `http://{cloudstack_hostname}/client/api` will use `localhost` if not set.
 - `cloudstack_cpu_overprovision`: Multiplier used for allowing CPU
   overprovisioning.  Default 4.
 - `cloudstack_disk_overprovision`: Multiplier used for allowing Disk
   overprovisioning.  Default 10.
+
+#### TLS related variables
+
+- `cloudstack_dns_email`: Used for certbot to specify email to provider.
+- `cloudstack_dns_provider`: DNS provider in use for performing the DNS-01
+  challenge.  Valid values are currently: `godaddy`, `cloudflare`
+- `cloudstack_dns_apikey`: API Key for the DNS provider to be able to create
+  a TXT record for `_acme-challenge.{{ cloudstack_hostname }}`.  This API should
+  be restricted to exactly that access and nothing more.  Use `Key:Secret` for
+  Godaddy keys. For GoDaddy see some information here:
+  https://community.letsencrypt.org/t/godaddy-dns-and-certbot-dns-challenge-scripts/210189
+
+#### SAML / IDP related variables
 - `cloudstack_saml_enable`: Boolean.  Whether or not to use SAML auth for users.
   Defaults to `false`. Please see the
   [SAML / External IDP](#saml---external-idp) section for more information.
