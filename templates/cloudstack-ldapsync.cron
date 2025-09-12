@@ -7,4 +7,4 @@
 {%   endif %}
 {% endfor %}
 {% set minute=(ns.index % 4) * 15 %}
-{{ minute }} * * * * root /usr/local/bin/cloudstack-ldapsync.py
+{{ minute }} * * * * root /usr/local/bin/cloudstack-ldapsync.py | logger -t "cloudstack-ldapsync" -p daemon.info
