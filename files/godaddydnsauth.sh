@@ -17,6 +17,6 @@ CREATE_DOMAIN="_acme-challenge.$ITEM"
 curl -X PATCH "https://api.godaddy.com/v1/domains/${DOMAIN}/records" \
      -H     "Authorization: sso-key ${dns_godaddy_api_token}" \
      -H     "Content-Type: application/json" \
-     --data '[{ "type":"TXT", "name":"'"$CREATE_DOMAIN"'", "data":"'"$CERTBOT_VALIDATION"'", "ttl":60}]'
+     --data '[{ "type":"TXT", "name":"'"$CREATE_DOMAIN"'", "data":"'"$CERTBOT_VALIDATION"'", "ttl":600}]'
 #Sleep to make sure the change has time to propagate over to DNS
 sleep 60

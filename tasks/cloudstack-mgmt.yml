@@ -250,18 +250,18 @@
     dest: /etc/cloudstack/usage/key
     state: link
 
-- name: "UFW: Disable: Redirect 80 -> 8080, 443 -> 8443 -- uses Nginx now"
-  blockinfile:
-    path: /etc/ufw/before.rules
-    marker: "# {mark} ANSIBLE CLOUDSTACK MANAGED NAT RULES"
-    insertafter: "^COMMIT"
-    block: |
-      *nat
-      :PREROUTING ACCEPT [0:0]
-      #-A PREROUTING -p tcp --dport 80 -j REDIRECT --to-port 8080
-      #-A PREROUTING -p tcp --dport 443 -j REDIRECT --to-port 8443
-      COMMIT
-  notify: ufw_reload
+# - name: "UFW: Disable: Redirect 80 -> 8080, 443 -> 8443 -- uses Nginx now"
+#   blockinfile:
+#     path: /etc/ufw/before.rules
+#     marker: "# {mark} ANSIBLE CLOUDSTACK MANAGED NAT RULES"
+#     insertafter: "^COMMIT"
+#     block: |
+#       *nat
+#       :PREROUTING ACCEPT [0:0]
+#       -A PREROUTING -p tcp --dport 80 -j REDIRECT --to-port 8080
+#       -A PREROUTING -p tcp --dport 443 -j REDIRECT --to-port 8443
+#       COMMIT
+#   notify: ufw_reload
 
 - name: "Ensure Usage server is started"
   service:
