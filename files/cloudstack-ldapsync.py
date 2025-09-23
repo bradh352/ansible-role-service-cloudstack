@@ -558,6 +558,7 @@ def fetch_cloudstack(
     # Internal system account, filter out, says should never be deleted:
     #   https://cwiki.apache.org/confluence/display/CLOUDSTACK/Baremetal+Advanced+Networking+Support
     ignore_users.append("baremetal-system-account")
+    ignore_projects = config["cloudstack"]["ignore_projects"].split(",")
 
     users = {}
     csusers = cs_client.listAccounts(listall=True)
@@ -587,6 +588,9 @@ def fetch_cloudstack(
     projects = cs_client.listProjects(listall=True)
     if projects.get("project"):
         for project in projects["project"]:
+            if project["name"] in ignore_projects:
+                continue
+
             accounts = cs_client.listProjectAccounts(projectid=project["id"])
             members = {}
             # This lists

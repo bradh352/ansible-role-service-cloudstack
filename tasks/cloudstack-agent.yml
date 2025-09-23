@@ -3,6 +3,7 @@
   ansible.builtin.apt:
     pkg:
       - "cloudstack-agent"
+      - "ovmf"
     state: latest
   notify: cloudstack_agent_restart
 
@@ -74,6 +75,27 @@
       {%- set mariadb    = (mariadb_buffer_pool_size|default(4096) if mariadb_cluster_name is not defined else 0) %}
       {%- set cloudstack = (2048 if inventory_hostname in groups["cloudstack_mgmt"]|default("") else 0) %}
       {{- ceph_mon + ceph_mds + ceph_osd + mariadb + cloudstack -}}
+
+- name: "cloudstack enable UEFI in agent"
+  copy:
+    src: uefi.properties
+    dest: /etc/cloudstack/agent/uefi.properties
+    mode: "644"
+    owner: root
+  notify: cloudstack_agent_restart
+
+- name: "Enable nvram UEFI settings for libvirt qemu"
+  ansible.builtin.blockinfile:
+    path: /etc/libvirt/qemu.conf
+    marker: "<!-- {mark} ANSIBLE MANAGED NVRAM BLOCK -->"
+    insertbefore: "#nvram"
+    block: |
+      nvram = [
+        "/usr/share/OVMF/OVMF_CODE_4M.fd:/usr/share/OVMF/OVMF_VARS_4M.fd",
+        "/usr/share/OVMF/OVMF_CODE_4M.secboot.fd:/usr/share/OVMF/OVMF_VARS_4M.fd",
+        "/usr/share/OVMF/OVMF_CODE_4M.ms.fd:/usr/share/OVMF/OVMF_VARS_4M.ms.fd"
+      ]
+  notify: libvirt_restart
 
 - name: "cloudstack agent set cpu model"
   lineinfile:

@@ -53,7 +53,20 @@ database is always `cloud_usage`.  There is no ability to change these.
 
 - `cloudstack_hostname`: Hostname that users will access cloudstack through.
   This will automatically update the `endpoint.url` setting like:
-  `https://{cloudstack_hostname}/client/api`.
+  `https://{cloudstack_hostname}/client/api`.  A DNS `A` record is required to
+  point to this name with the Virtual IP assigned to the cloudstack instance.
+- `cloudstack_hostname_console`: This is the console hostname suffix. Console
+  proxies will use domain names in the form of
+  `aaa-bbb-ccc-ddd.{{ cloudstack_hostname_console }}`.  This value will be
+  stored into `consoleproxy.url.domain`.  A wildcard `A` DNS record is required
+  to be specified for this hostname and should likely point to the same Virtual
+  IP as `cloudstack_hostname`.
+- `cloudstack_hostname_ssvm`: This is the Secondary Storage VM (ssvm) hostname
+  suffix. SSVM instances will use domain names in the form of
+  `aaa-bbb-ccc-ddd.{{ cloudstack_hostname_ssvm }}`.  This value will be
+  stored into `secstorage.ssl.cert.domain`.  A wildcard `A` DNS record is
+  required to be specified for this hostname and should likely point to the same
+  Virtual IP as `cloudstack_hostname`.
 - `mariadb_root_password`: Required. Same password as used during deployment of
   mariadb. Currently assumes MariaDB is running on the same node as part of the
   cluster.  Should be stored in the vault.
@@ -112,6 +125,8 @@ database is always `cloud_usage`.  There is no ability to change these.
 - `cloudstack_saml_ignore_users`: List of users to NOT import from upstream IDP.
 - `cloudstack_saml_ignore_cloudstack_users`: List of users to ignore within
   cloudstack when considering what users exist as well as group membership.
+- `cloudstack_saml_ignore_projects`: List of projects in cloudstack to ignore
+  (basically don't disable them if they don't exist).
 - `cloudstack_saml_groups_allowed`: Required.  List of groups to use for
   determining if the users within them are to be added to cloudstack.
 - `cloudstack_saml_admin_groups`: List of groups in LDAP that will be translated
