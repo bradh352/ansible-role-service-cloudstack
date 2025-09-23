@@ -87,7 +87,7 @@
 - name: "Enable nvram UEFI settings for libvirt qemu"
   ansible.builtin.blockinfile:
     path: /etc/libvirt/qemu.conf
-    marker: "<!-- {mark} ANSIBLE MANAGED NVRAM BLOCK -->"
+    marker: "# {mark} ANSIBLE MANAGED NVRAM BLOCK"
     insertbefore: "#nvram"
     block: |
       nvram = [
