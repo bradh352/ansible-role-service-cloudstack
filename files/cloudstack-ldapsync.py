@@ -563,14 +563,18 @@ def fetch_cloudstack(
     users = {}
     csusers = cs_client.listAccounts(listall=True)
     for account in csusers["account"]:
-        u = account["user"][0]
-
-        if account["name"] in ignore_users or u["username"] in ignore_users:
+        if account["name"] in ignore_users:
             continue
 
-        # Cloudstack has a weird concept of user aliases.  We only want to support one user per account.
-        if len(account["user"]) != 1:
-            raise Exception(f"Account {account['name']} has {len(account['user'])} users. Unsupported.  Expected only 1.")
+        # Cloudstack has a weird concept of user aliases.  Only match a user with the same name as the account.
+        u = None
+        for user in account["user"]:
+            if account["name"] == user["username"]:
+                u = user
+                break
+
+        if u is None:
+            raise Exception(f"Account {account['name']} is expected to have a username of an equivalent name.")
 
         user = User(
             username=u["username"],
