@@ -128,13 +128,16 @@ database is always `cloud_usage`.  There is no ability to change these.
 - `cloudstack_saml_ignore_projects`: List of projects in cloudstack to ignore
   (basically don't disable them if they don't exist).
 - `cloudstack_saml_groups_allowed`: Required.  List of groups to use for
-  determining if the users within them are to be added to cloudstack.
+  determining if the users within them are to be added to cloudstack.  This also
+  allows groups to be matched using fnmatch() patterns, such as `cs_*`.
 - `cloudstack_saml_admin_groups`: List of groups in LDAP that will be translated
   to cloudstack administrators. Groups listed here do *not* need to also be
-  added to `groups_allowed`.
+  added to `groups_allowed`. This also allows groups to be matched using
+  fnmatch() patterns, such as `cs_*`.
 - `cloudstack_saml_project_groups`: List of groups for which a project will be
   created, and the users within will be added to the project.  Groups listed
-  here do *not* need to also be added to `groups_allowed`.
+  here do *not* need to also be added to `groups_allowed`.  This also allows
+  groups to be matched using fnmatch() patterns, such as `cs_*`.
 - `cloudstack_saml_attr_username`: LDAP attribute for username, defaults to
   `uid`.
 - `cloudstack_saml_attr_fname`: LDAP attribute for first name, defaults to

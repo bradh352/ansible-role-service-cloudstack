@@ -2,6 +2,7 @@
 """Script used to sync from LDAP as a source of truth for Cloudstack"""
 
 import configparser
+import fnmatch
 import random
 import string
 from dataclasses import dataclass
@@ -467,7 +468,13 @@ def fetch_ldap(config: configparser.ConfigParser) -> Tuple[Dict[str, User], Dict
         if name is None:
             continue
 
-        if name not in groups_allowed:
+        group_match = False
+        for groupname in groups_allowed:
+            if fnmatch.fnmatch(name, groupname):
+                group_match = True
+                break
+
+        if not group_match:
             continue
 
         members = {}
@@ -484,10 +491,22 @@ def fetch_ldap(config: configparser.ConfigParser) -> Tuple[Dict[str, User], Dict
                 all_allowed_users[member] = None
 
                 # If the group is an administrative group, also cache the user as an admin user
-                if name in admin_groups:
+                group_match = False
+                for groupname in admin_groups:
+                    if fnmatch.fnmatch(name, groupname):
+                        group_match = True
+                        break
+
+                if group_match:
                     admin_users[member] = None
 
-        if name in project_groups:
+        group_match = False
+        for groupname in project_groups:
+            if fnmatch.fnmatch(name, groupname):
+                group_match = True
+                break
+
+        if group_match:
             group = Group(
                 name=name,
                 members=members,
