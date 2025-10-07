@@ -268,11 +268,10 @@
     name: cloudstack-usage
     state: started
 
-- name: "Ensure /etc/nginx/sites-enabled/default is commented out"
-  replace:
+- name: "Ensure /etc/nginx/sites-enabled/default is deleted"
+  file:
     path: "/etc/nginx/sites-enabled/default"
-    regexp: "^(?!#)(.*)$"
-    replace: "#\\1"
+    state: absent
   notify: nginx_restart
 
 - name: "Install nginx configuration"
