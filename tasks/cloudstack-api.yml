@@ -119,6 +119,8 @@
     - { key: "mem.overprovisioning.factor",      val: "1.25" }
     - { key: "custom.diskoffering.size.max",     val: "10240" }
     - { key: "storage.max.volume.size",          val: "10240" }
+    - { key: "vm.network.throttling.rate",       val: "0" }
+    - { key: "network.throttling.rate",          val: "0" }
     - { key: "vm.min.memory.equals.memory.divided.by.mem.overprovisioning.factor", val: "false" }
     - { key: "expunged.resources.purge.enabled", val: "true" }
     - { key: "endpoint.url",                     val: "{{ 'https://' ~ cloudstack_hostname ~ '/client/api' }}" }
