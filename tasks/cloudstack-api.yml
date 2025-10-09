@@ -94,37 +94,38 @@
     cmk_config_val: "{{ item.val }}"
   when: item.val is defined
   with_items:
-    - { key: "cpu.overprovisioning.factor",      val: "{{ cloudstack_cpu_overprovision }}" }
-    - { key: "storage.overprovisioning.factor",  val: "{{ cloudstack_disk_overprovision }}" }
-    - { key: "secstorage.vm.mtu.size",           val: "{{ ansible_facts[cloudstack_mgmt_interface]['mtu']|default(1500) }}" }
-    - { key: "management.network.cidr",          val: "{{ cloudstack_management_subnet }}" }
-    - { key: "host",                             val: "{{ cloudstack_management_ips | join(',') }}" }
-    - { key: "enable.dynamic.scale.vm",          val: "true" }
-    - { key: "ipv6.offering.enabled",            val: "true" }
-    - { key: "vm.stats.interval",                val: "60000" }
-    - { key: "kvm.vmstoragesnapshot.enabled",    val: "true" }
-    - { key: "kvm.snapshot.enabled",             val: "true" }
-    - { key: "kvm.auto.convergence",             val: "true" }
-    - { key: "kvm.storage.pool.io.policy",       val: "io_uring" }
-    - { key: "drs.algorithm",                    val: "balanced" }
-    - { key: "drs.automatic.enable",             val: "true" }
-    - { key: "drs.automatic.interval",           val: "60" }
-    - { key: "drs.imbalance",                    val: "0.75" }
+    - { key: "cpu.overprovisioning.factor",        val: "{{ cloudstack_cpu_overprovision }}" }
+    - { key: "storage.overprovisioning.factor",    val: "{{ cloudstack_disk_overprovision }}" }
+    - { key: "secstorage.vm.mtu.size",             val: "{{ ansible_facts[cloudstack_mgmt_interface]['mtu']|default(1500) }}" }
+    - { key: "management.network.cidr",            val: "{{ cloudstack_management_subnet }}" }
+    - { key: "host",                               val: "{{ cloudstack_management_ips | join(',') }}" }
+    - { key: "enable.dynamic.scale.vm",            val: "true" }
+    - { key: "ipv6.offering.enabled",              val: "true" }
+    - { key: "vm.stats.interval",                  val: "60000" }
+    - { key: "kvm.vmstoragesnapshot.enabled",      val: "true" }
+    - { key: "kvm.snapshot.enabled",               val: "true" }
+    - { key: "kvm.auto.convergence",               val: "true" }
+    - { key: "kvm.storage.pool.io.policy",         val: "io_uring" }
+    - { key: "drs.algorithm",                      val: "balanced" }
+    - { key: "drs.automatic.enable",               val: "true" }
+    - { key: "drs.automatic.interval",             val: "60" }
+    - { key: "drs.imbalance",                      val: "0.75" }
     - { key: "drs.imbalance.condensed.skip.threshold", val: "0.95" }
-    - { key: "drs.max.migrations",               val: "50" }
-    - { key: "drs.metric",                       val: "memory" }
-    - { key: "drs.metric.type",                  val: "used" }
-    - { key: "drs.metric.use.ratio",             val: "true" }
-    - { key: "vpc.max.networks",                 val: "50" }
-    - { key: "mem.overprovisioning.factor",      val: "1.25" }
-    - { key: "custom.diskoffering.size.max",     val: "10240" }
-    - { key: "storage.max.volume.size",          val: "10240" }
-    - { key: "vm.network.throttling.rate",       val: "0" }
-    - { key: "network.throttling.rate",          val: "0" }
+    - { key: "drs.max.migrations",                 val: "50" }
+    - { key: "drs.metric",                         val: "memory" }
+    - { key: "drs.metric.type",                    val: "used" }
+    - { key: "drs.metric.use.ratio",               val: "true" }
+    - { key: "vpc.max.networks",                   val: "21" }  # This is actually a KVM limit due to the PCI bus, past this we get failures
+    - { key: "mem.overprovisioning.factor",        val: "1.25" }
+    - { key: "custom.diskoffering.size.max",       val: "10240" }
+    - { key: "storage.max.volume.size",            val: "10240" }
+    - { key: "vm.network.throttling.rate",         val: "0" }
+    - { key: "network.throttling.rate",            val: "0" }
+    - { key: "enable.additional.vm.configuration", val: "true" }  # Needed to pass additional XML to libvirt. 'allow.additional.vm.configuration.list.kvm' would need to be set for users to be able to add XML.
     - { key: "vm.min.memory.equals.memory.divided.by.mem.overprovisioning.factor", val: "false" }
-    - { key: "expunged.resources.purge.enabled", val: "true" }
-    - { key: "endpoint.url",                     val: "{{ 'https://' ~ cloudstack_hostname ~ '/client/api' }}" }
-    - { key: "saml2.enabled",                    val: "{{ 'true' if cloudstack_saml_enable else 'false' }}" }
+    - { key: "expunged.resources.purge.enabled",   val: "true" }
+    - { key: "endpoint.url",                       val: "{{ 'https://' ~ cloudstack_hostname ~ '/client/api' }}" }
+    - { key: "saml2.enabled",                      val: "{{ 'true' if cloudstack_saml_enable else 'false' }}" }
   run_once: true
 
 - name: "Set SAML options"
