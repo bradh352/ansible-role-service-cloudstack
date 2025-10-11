@@ -101,7 +101,7 @@ def sync(config_path: str, cloudmonkey_config_path: str, dry_run: bool):
     ldap_users, ldap_groups = fetch_ldap(config)
     cs_users, cs_projects, cs_roles, cs_idps, cs_nets = fetch_cloudstack(cs_client, config)
 
-    project_groups = project_groups_list(cmk_config, ldap_groups)
+    project_groups = project_groups_list(config, ldap_groups)
 
     if dry_run:
         print("== DRY RUN ==")
@@ -355,19 +355,26 @@ def cs_network_mod(client: CloudStack, ldap_group: Group, network: Network, ldap
 
     for member in ldap_group.members:
         if member not in network.members:
+            # We may have a member that isn't actually in the system, skip
+            if member not in ldap_users:
+                continue
             print(f"     * Adding member {member}")
             if not dry_run:
                 client.createNetworkPermissions(
                     networkid=network.uuid,
-                    account=member,
+                    accounts=member,
                 )
     for member in network.members:
         if member not in ldap_group.members:
+            # On user deletion, we've pre-cached group membership, but it will be auto-removed so skip
+            # deleted users.
+            if member not in ldap_users:
+                continue
             print(f"     * Removing member {member}")
             if not dry_run:
-                client.removeNetworkPermission(
+                client.removeNetworkPermissions(
                     networkid=network.uuid,
-                    account=member,
+                    accounts=member,
                 )
 
 
