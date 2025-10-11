@@ -35,6 +35,16 @@ class Group:
     members: Dict[str, None]
     uuid: Optional[str]
 
+
+@dataclass
+class Network:
+    """Data class containing permissions for a Network"""
+
+    uuid: str
+    group: str
+    members: Dict[str, None]
+
+
 @dataclass
 class Role:
     """Data class containing all role attributes we care about"""
@@ -89,7 +99,9 @@ def sync(config_path: str, cloudmonkey_config_path: str, dry_run: bool):
     )
 
     ldap_users, ldap_groups = fetch_ldap(config)
-    cs_users, cs_projects, cs_roles, cs_idps = fetch_cloudstack(cs_client, config)
+    cs_users, cs_projects, cs_roles, cs_idps, cs_nets = fetch_cloudstack(cs_client, config)
+
+    project_groups = project_groups_list(cmk_config, ldap_groups)
 
     if dry_run:
         print("== DRY RUN ==")
@@ -106,14 +118,14 @@ def sync(config_path: str, cloudmonkey_config_path: str, dry_run: bool):
         for user in deleted_users:
             cs_user_del(cs_client, user, dry_run)
 
-    new_groups = groups_not_in(ldap_groups, cs_projects)
+    new_groups = groups_not_in(project_groups, cs_projects)
     if len(new_groups):
         print(f" * Adding {len(new_groups)} new projects")
         for group in new_groups:
             cs_project_add(cs_client, group, dry_run)
 
     # In case of user error, we suspend instead of delete projects
-    deleted_groups = groups_not_in(cs_projects, ldap_groups, ignore_list1_disabled=True)
+    deleted_groups = groups_not_in(cs_projects, project_groups, ignore_list1_disabled=True)
     if len(deleted_groups):
         print(f" * Suspending {len(deleted_groups)} projects")
         for group in deleted_groups:
@@ -125,11 +137,16 @@ def sync(config_path: str, cloudmonkey_config_path: str, dry_run: bool):
         for user in updated_users:
             cs_user_mod(cs_client, user, cs_users[user.username], cs_roles, cs_idps, dry_run)
 
-    updated_groups = modified_groups(ldap_groups, cs_projects)
+    updated_groups = modified_groups(project_groups, cs_projects)
     if len(updated_groups):
         print(f" * Updating {len(updated_groups)} projects")
         for group in updated_groups:
             cs_project_mod(cs_client, group, cs_projects[group.name], ldap_users, dry_run)
+
+    for _, network in cs_nets.items():
+        if network.members != ldap_groups[network.group].members:
+            print(f" * Updating network {network.uuid} membership")
+            cs_network_mod(cs_client, ldap_groups[network.group], network, ldap_users, dry_run)
 
     print("Sync Complete")
 
@@ -318,6 +335,42 @@ def cs_project_mod(
                     )
 
 
+def cs_network_mod(client: CloudStack, ldap_group: Group, network: Network, ldap_users: Dict[str, User], dry_run: bool):
+    """
+    Modify Network account membership.
+
+    Parameters:
+        client [ClientStack]: Connected and logged in CloudStack session
+        ldap_group [Group]: Updated group from LDAP
+        network [Network]: Network to compare membership
+        ldap_users [Dict[str, User]]: List of known users in LDAP.  Used to exclude group membership changes for
+            deleted users.
+        dry_run [bool]: If true, only print what would occur.
+
+    Exceptions:
+        CloudStackException
+    """
+
+    print(f"   * Updating Network {network.uuid}")
+
+    for member in ldap_group.members:
+        if member not in network.members:
+            print(f"     * Adding member {member}")
+            if not dry_run:
+                client.createNetworkPermissions(
+                    networkid=network.uuid,
+                    account=member,
+                )
+    for member in network.members:
+        if member not in ldap_group.members:
+            print(f"     * Removing member {member}")
+            if not dry_run:
+                client.removeNetworkPermission(
+                    networkid=network.uuid,
+                    account=member,
+                )
+
+
 def cs_project_suspend(client: CloudStack, group: Group, dry_run: bool):
     """
     Suspend cloudstack project
@@ -415,6 +468,17 @@ def strtobool(val: str) -> bool:
     return False
 
 
+def project_groups_list(config: configparser.ConfigParser, groups: Dict[str, Group]) -> Dict[str, Group]:
+    project_groups = config["ldap"]["project_groups"].split(",")
+    out = {}
+    for name, data in groups.items():
+        for groupname in project_groups:
+            if fnmatch.fnmatch(name, groupname):
+                out[name] = data
+                break
+    return out
+
+
 def fetch_ldap(config: configparser.ConfigParser) -> Tuple[Dict[str, User], Dict[str, Group]]:
     """
     Retrieve all users that belong to groups_allowed or project_groups, and return group for each project_group with
@@ -437,16 +501,15 @@ def fetch_ldap(config: configparser.ConfigParser) -> Tuple[Dict[str, User], Dict
 
     ignore_users = config["ldap"]["ignore_users"].split(",")
     project_groups = config["ldap"]["project_groups"].split(",")
-    admin_groups   = config["ldap"]["admin_groups"].split(",")
+    admin_groups = config["ldap"]["admin_groups"].split(",")
     groups_allowed = config["ldap"]["groups_allowed"].split(",")
     groups_allowed.extend(project_groups)
     groups_allowed.extend(admin_groups)
+    groups_allowed = list(set(groups_allowed))
 
-    # Transform each list into dictionaries for faster lookups
+    # Transform user list into dictionaries for faster lookups
+    # We don't do this for groups since we do an fnmatch() on those.
     ignore_users = { user for user in ignore_users }
-    project_groups = { group for group in project_groups }
-    admin_groups = { group for group in admin_groups }
-    groups_allowed = { group for group in groups_allowed }
 
     all_allowed_users = {}
     admin_users = {}
@@ -468,14 +531,12 @@ def fetch_ldap(config: configparser.ConfigParser) -> Tuple[Dict[str, User], Dict
         if name is None:
             continue
 
-        group_match = False
+        # Determine if this group allows the user.
+        allowed_user_group_match = False
         for groupname in groups_allowed:
             if fnmatch.fnmatch(name, groupname):
-                group_match = True
+                allowed_user_group_match = True
                 break
-
-        if not group_match:
-            continue
 
         members = {}
         if attr.get(config["ldap"]["attr_group_members"]):
@@ -488,33 +549,28 @@ def fetch_ldap(config: configparser.ConfigParser) -> Tuple[Dict[str, User], Dict
                 members[member] = None
 
                 # We keep a list of all allowed users
-                all_allowed_users[member] = None
+                if allowed_user_group_match:
+                    all_allowed_users[member] = None
 
                 # If the group is an administrative group, also cache the user as an admin user
-                group_match = False
+                admin_group_match = False
                 for groupname in admin_groups:
                     if fnmatch.fnmatch(name, groupname):
-                        group_match = True
+                        admin_group_match = True
                         break
 
-                if group_match:
+                if admin_group_match:
                     admin_users[member] = None
 
-        group_match = False
-        for groupname in project_groups:
-            if fnmatch.fnmatch(name, groupname):
-                group_match = True
-                break
+        # Always save the group as we need it for things like network maps
+        group = Group(
+            name=name,
+            members=members,
+            enabled=True,
+            uuid=None,
+        )
 
-        if group_match:
-            group = Group(
-                name=name,
-                members=members,
-                enabled=True,
-                uuid=None,
-            )
-
-            groups[group.name] = group
+        groups[group.name] = group
 
     conn.search(
         search_base=config["ldap"]["userdn"],
@@ -554,7 +610,7 @@ def fetch_ldap(config: configparser.ConfigParser) -> Tuple[Dict[str, User], Dict
 
 def fetch_cloudstack(
     cs_client: CloudStack, config: configparser.ConfigParser
-) -> Tuple[Dict[str, User], Dict[str, Group], Dict[str, Role], Dict[str, IDP]]:
+) -> Tuple[Dict[str, User], Dict[str, Group], Dict[str, Role], Dict[str, IDP], Dict[str, Network]]:
     """
     Retrieve all cloudstack users (that are not in ignore_users), all projects (as groups), and all roles (for
     dereferencing UUIDs)
@@ -568,6 +624,7 @@ def fetch_cloudstack(
         Groups [Dict[str, Group]]: Dictionary of groups. The key is the group name, the value is a class Group instance.
         Roles [Dict[str, Role]]: Dictionary of roles. The key is the role name, the value is a class Role instance.
         IDPs [Dict[str, Role]]: Dictionary of IDPs.  The key is the orgName, the value is a class IDP instance.
+        Networks [Dict[str, Network]]: Dictionary of Networks that are configured with members. The key is the network uuid, the value is a class Network instance.
 
     Exceptions:
         CloudStackException
@@ -578,6 +635,12 @@ def fetch_cloudstack(
     #   https://cwiki.apache.org/confluence/display/CLOUDSTACK/Baremetal+Advanced+Networking+Support
     ignore_users.append("baremetal-system-account")
     ignore_projects = config["cloudstack"]["ignore_projects"].split(",")
+    list_networks = {}
+    for network in config["cloudstack"]["network_groups"].split(","):
+        network = network.strip()
+        if len(network) > 0:
+            network = network.split("=")
+            list_networks[network[0]] = network[1]
 
     users = {}
     csusers = cs_client.listAccounts(listall=True)
@@ -653,7 +716,17 @@ def fetch_cloudstack(
             )
             idps[idp.orgname] = idp
 
-    return users, groups, roles, idps
+    networks = {}
+    for uuid, group in list_networks.items():
+        members = {}
+        csnets = cs_client.listNetworkPermissions(networkid=uuid)
+        for member in csnets["networkpermission"]:
+            if "project" in member:
+                continue
+            members[member["account"]] = None
+        networks[uuid] = Network(uuid=uuid, group=group, members=members)
+
+    return users, groups, roles, idps, networks
 
 
 def users_not_in(list1: Dict[str, User], list2: Dict[str, User]) -> List[User]:
