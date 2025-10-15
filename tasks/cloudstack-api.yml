@@ -15,7 +15,7 @@
     cmk_bootstrap_node: >-
       {%- set eligible_hosts = [] %}
       {%- for node in cmk_bootstrap_nodes.results %}
-      {%-   if node.stdout|length > 0 %}
+      {%-   if node.stdout|default("")|length > 0 %}
       {%-     do eligible_hosts.append(node.item) %}
       {%-   endif %}
       {%- endfor %}
@@ -155,5 +155,6 @@
   when: cmk_config_changed|default(false)
   script: "cloudstack_mgmt_start.sh 1"
   delegate_to: "{{ item }}"
+  ignore_unreachable: yes
   with_items: "{{ groups['cloudstack_mgmt'] }}"
 
