@@ -340,3 +340,50 @@
   with_items:
     - 80
     - 443
+
+# Cloudstack 4.21 has an issue where on SAML logout, cookies aren't cleared and it loops.
+# We need to manually patch this from this PR https://github.com/apache/cloudstack/pull/11361
+# Until an official release is available.  The source file is in a webpack json and happens
+# to be in /usr/share/cloudstack-management/webapp/js/app.bb8decdd.js.map (found via grep)
+# with sha256sum of 4f1c4f5cb30371340506cda8953ee95f2893c738f2168e0cae1a14849a5cc770
+# in v4.21.  In the webpack file the "sources" list contains the original filenames, which we
+# need to retrieve the index of 'webpack:///./src/store/modules/user.js', then the "sourcesContent"
+# list has the source file at the same index.
+#
+# We get the index via:
+#  # cat /usr/share/cloudstack-management/webapp/js/app.bb8decdd.js.map | jq '.sources | to_entries[] | select(.value == "webpack:///./src/store/modules/user.js") | .key'
+#    29
+#
+# We can then extract the content with:
+#  # cat /usr/share/cloudstack-management/webapp/js/app.bb8decdd.js.map | jq -r '.sourcesContent[29]'  > /tmp/user.js
+#
+# Then patch with:
+#  # cd /tmp/
+#  # wget https://patch-diff.githubusercontent.com/raw/apache/cloudstack/pull/11361.patch
+#  # patch -p5 < 11361.patch
+#
+# And re-embed with:
+# # USERJS="`cat user.js`"
+# # jq -c --arg new_value "$USERJS" '.sourcesContent[29] = $new_value' /usr/share/cloudstack-management/webapp/js/app.bb8decdd.js.map > /tmp/app.bb8decdd.js.map.new
+#
+# Finally zip it
+# # gzip -c /tmp/app.bb8decdd.js.map.new > /tmp/app.bb8decdd.js.map.gz
+
+- name: "Apply patch for SAML issue"
+  block:
+  - name: "Patch: Determine if system is patched"
+    stat:
+      path: "/usr/share/cloudstack-management/webapp/js/app.bb8decdd.js.map"
+      checksum_algorithm: sha256
+    register: patch
+  - name: "Patch: Copy"
+    copy:
+      src: "app.bb8decdd.js.map.gz"
+      dest: "/tmp/app.bb8decdd.js.map.gz"
+    when: patch.stat.exists and patch.stat.checksum == '4f1c4f5cb30371340506cda8953ee95f2893c738f2168e0cae1a14849a5cc770'
+  - name: "Patch: Move into place"
+    shell: |
+      gunzip -c /tmp/app.bb8decdd.js.map.gz > /usr/share/cloudstack-management/webapp/js/app.bb8decdd.js.map
+      chmod 644 /usr/share/cloudstack-management/webapp/js/app.bb8decdd.js.map
+      rm -f /tmp/app.bb8decdd.js.map.gz
+    when: patch.stat.exists and patch.stat.checksum == '4f1c4f5cb30371340506cda8953ee95f2893c738f2168e0cae1a14849a5cc770'

@@ -16,3 +16,4 @@ cloudstack_saml_ignore_cloudstack_users:
 cloudstack_saml_ignore_projects: []
 cloudstack_saml_project_groups: []
 cloudstack_saml_admin_groups: []
+cloudstack_saml_network_groups: {}
