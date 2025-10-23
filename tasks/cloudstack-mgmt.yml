@@ -341,6 +341,11 @@
     - 80
     - 443
 
+# -------
+#  For some reason this didn't work.  Its not entirely clear why.  Maybe it
+#  Has a cache somewhere that needs to be cleared.  Not sure.  The .map may be
+#  for debugging only.
+# -------
 # Cloudstack 4.21 has an issue where on SAML logout, cookies aren't cleared and it loops.
 # We need to manually patch this from this PR https://github.com/apache/cloudstack/pull/11361
 # Until an official release is available.  The source file is in a webpack json and happens
@@ -368,22 +373,22 @@
 #
 # Finally zip it
 # # gzip -c /tmp/app.bb8decdd.js.map.new > /tmp/app.bb8decdd.js.map.gz
-
-- name: "Apply patch for SAML issue"
-  block:
-  - name: "Patch: Determine if system is patched"
-    stat:
-      path: "/usr/share/cloudstack-management/webapp/js/app.bb8decdd.js.map"
-      checksum_algorithm: sha256
-    register: patch
-  - name: "Patch: Copy"
-    copy:
-      src: "app.bb8decdd.js.map.gz"
-      dest: "/tmp/app.bb8decdd.js.map.gz"
-    when: patch.stat.exists and patch.stat.checksum == '4f1c4f5cb30371340506cda8953ee95f2893c738f2168e0cae1a14849a5cc770'
-  - name: "Patch: Move into place"
-    shell: |
-      gunzip -c /tmp/app.bb8decdd.js.map.gz > /usr/share/cloudstack-management/webapp/js/app.bb8decdd.js.map
-      chmod 644 /usr/share/cloudstack-management/webapp/js/app.bb8decdd.js.map
-      rm -f /tmp/app.bb8decdd.js.map.gz
-    when: patch.stat.exists and patch.stat.checksum == '4f1c4f5cb30371340506cda8953ee95f2893c738f2168e0cae1a14849a5cc770'
+#
+# - name: "Apply patch for SAML issue"
+#   block:
+#   - name: "Patch: Determine if system is patched"
+#     stat:
+#       path: "/usr/share/cloudstack-management/webapp/js/app.bb8decdd.js.map"
+#       checksum_algorithm: sha256
+#     register: patch
+#   - name: "Patch: Copy"
+#     copy:
+#       src: "app.bb8decdd.js.map.gz"
+#       dest: "/tmp/app.bb8decdd.js.map.gz"
+#     when: patch.stat.exists and patch.stat.checksum == '4f1c4f5cb30371340506cda8953ee95f2893c738f2168e0cae1a14849a5cc770'
+#   - name: "Patch: Move into place"
+#     shell: |
+#       gunzip -c /tmp/app.bb8decdd.js.map.gz > /usr/share/cloudstack-management/webapp/js/app.bb8decdd.js.map
+#       chmod 644 /usr/share/cloudstack-management/webapp/js/app.bb8decdd.js.map
+#       rm -f /tmp/app.bb8decdd.js.map.gz
+#     when: patch.stat.exists and patch.stat.checksum == '4f1c4f5cb30371340506cda8953ee95f2893c738f2168e0cae1a14849a5cc770'
