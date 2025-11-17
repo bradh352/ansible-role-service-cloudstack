@@ -1,9 +1,11 @@
+# Redirect 80->443 always
 server {
     listen 80;
     server_name {{ cloudstack_hostname }};
     return 301 https://$host$request_uri;
 }
 
+# Cloudstack UI
 server {
     listen 443 ssl;
     server_name {{ cloudstack_hostname }};
@@ -16,7 +18,7 @@ server {
     ssl_prefer_server_ciphers on;
 
     location / {
-        proxy_pass http://127.0.0.1:8080;
+        proxy_pass http://127.0.0.1:8123;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -25,10 +27,98 @@ server {
     }
 
     location /client/api/websocket {
-        proxy_pass http://127.0.0.1:8080;
+        proxy_pass http://127.0.0.1:8123;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
         proxy_read_timeout 120;
     }
 }
+
+# Cloudstack console proxy
+server {
+    listen 443 ssl;
+    listen 8080 ssl;
+    server_name ~^(?<ip_octet1>\d+)-(?<ip_octet2>\d+)-(?<ip_octet3>\d+)-(?<ip_octet4>\d+)\.{{ cloudstack_console_hostname | replace('.', '\\.') }}$;
+
+    ssl_certificate {{ cloudstack_console_tlscert }};
+    ssl_certificate_key {{ cloudstack_console_tlskey }};
+
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers 'TLS-CHACHA20-POLY1305-SHA256:TLS-AES-256-GCM-SHA384:TLS-AES-128-GCM-SHA256:EECDH+CHACHA20:EECDH+AESGCM:EECDH+AES256:EECDH+AES128';
+    ssl_prefer_server_ciphers on;
+
+    client_max_body_size 0;
+    proxy_http_version 1.1;
+    proxy_cache off;
+    proxy_request_buffering off;
+    proxy_max_temp_file_size 0;
+    proxy_redirect off;
+    proxy_buffering off;
+
+    location / {
+        proxy_pass http://$ip_octet1.$ip_octet2.$ip_octet3.$ip_octet4;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 600;
+    }
+
+    location /websockify {
+        proxy_pass http://$ip_octet1.$ip_octet2.$ip_octet3.$ip_octet4:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_cache_bypass $http_upgrade;
+        proxy_ignore_client_abort off;
+        proxy_read_timeout 86400;
+    }
+}
+
+# Cloudstack secondary storage vm (ssvm)
+server {
+    listen 443 ssl;
+    server_name ~^(?<ip_octet1>\d+)-(?<ip_octet2>\d+)-(?<ip_octet3>\d+)-(?<ip_octet4>\d+)\.{{ cloudstack_ssvm_hostname | replace('.', '\\.') }}$;
+
+    ssl_certificate {{ cloudstack_ssvm_tlscert }};
+    ssl_certificate_key {{ cloudstack_ssvm_tlskey }};
+
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers 'TLS-CHACHA20-POLY1305-SHA256:TLS-AES-256-GCM-SHA384:TLS-AES-128-GCM-SHA256:EECDH+CHACHA20:EECDH+AESGCM:EECDH+AES256:EECDH+AES128';
+    ssl_prefer_server_ciphers on;
+
+    client_max_body_size 0;
+    proxy_http_version 1.1;
+    proxy_cache off;
+    proxy_request_buffering off;
+    proxy_max_temp_file_size 0;
+    proxy_redirect off;
+    proxy_buffering off;
+
+    location / {
+        proxy_pass https://$ip_octet1.$ip_octet2.$ip_octet3.$ip_octet4;
+        proxy_ssl_verify off;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 600;
+    }
+}
+
+server {
+    listen 443 ssl default_server;
+    server_name _;
+    root /var/www/html;
+    index index.html index.nginx-debian.html;
+    ssl_certificate {{ cloudstack_tlscert }};
+    ssl_certificate_key {{ cloudstack_tlskey }};
+}
+

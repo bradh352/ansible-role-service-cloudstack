@@ -180,7 +180,6 @@
     port: "{{ item }}"
     proto: tcp
   with_items:
-    - 8080
     - 8250
     - 9090
 
@@ -202,6 +201,15 @@
     - { key: "db.usage.maxWait", val: "60000" }
   notify: "{{ 'cloudstack_mgmt_restart' if not (db_config.changed or cloudstack_db_info.databases['cloud'].tables == 0) else omit }}"
 
+- name: Update server parameters
+  lineinfile:
+    dest: "/etc/cloudstack/management/server.properties"
+    regexp: "^{{ item.key }}=.*"
+    line: "{{ item.key }}={{ item.val }}"
+  with_items:
+    - { key: "http.port", val: "8123" } # Default is 8080, but due to the console proxy requiring 8080 we have to override
+  notify: "{{ 'cloudstack_mgmt_restart' if not (db_config.changed or cloudstack_db_info.databases['cloud'].tables == 0) else omit }}"
+
 - name: "Determine if cloudstack is running"
   shell: systemctl is-active cloudstack-management
   changed_when: false
@@ -209,7 +217,7 @@
   register: cloudstack_running
 
 - name: "Determine if cloudstack is in a good state"
-  shell: "curl -s -o /dev/null -L -w '%{http_code}' http://localhost:8080/"
+  shell: "curl -s -o /dev/null -L -w '%{http_code}' http://localhost:8123/"
   failed_when: false
   changed_when: false
   register: cloudstack_http_code
@@ -227,7 +235,7 @@
 
 - name: "Wait for initialization of first node"
   ansible.builtin.wait_for:
-    port: 8080
+    port: 8123
     delay: 10
   when: inventory_hostname == cloudstack_bootstrap_node|default("")
 
@@ -276,4 +284,5 @@
     proto: tcp
   with_items:
     - 80
+    - 8080
     - 443

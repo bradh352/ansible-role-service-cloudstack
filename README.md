@@ -57,14 +57,24 @@ database is always `cloud_usage`.  There is no ability to change these.
   This will automatically update the `endpoint.url` setting like:
   `https://{cloudstack_hostname}/client/api`.  A DNS `A` record is required to
   point to this name with the Virtual IP assigned to the cloudstack instance.
-  **NOTE**: Additionally `*.{{ cloudstack_hostname }}` must be in DNS to support
-  SSVM and ConsoleProxy.  The console proxy and ssvm will use
-  `aaa-bbb-ccc-ddd.{{ cloudstack_hostname }}`.
 - `cloudstack_tlscert`: The path to the full TLS certificate including
-  intermediates.  The certificate must support the `cloudstack_hostname` as
-  well as `*.{{ cloudstack_hostname }}`.
+  intermediates.
   NOTE: Should be the output path from certbot.
 - `cloudstack_tlskey`: The path to the TLS private key for the certificate.
+- `cloudstack_console_hostname`: Domain suffix for console proxies.  Proxies
+  will automatically be created using `NNN-NNN-NNN-NNN.{{ cloudstack_console_hostname }}`.
+  Must have a wildcard DNS entry for this suffix.
+- `cloudstack_console_tlscert`: The path to the full TLS certificate including
+  intermediates for `*.{{ cloudstack_console_hostname }}`.
+  NOTE: Should be the output path from certbot.
+- `cloudstack_console_tlskey`: The path to the TLS private key for the certificate.
+- `cloudstack_ssvm_hostname`: Domain suffix for secondary storage vms.  VMs
+  will automatically be created using `NNN-NNN-NNN-NNN.{{ cloudstack_ssvm_hostname }}`.
+  Must have a wildcard DNS entry for this suffix.
+- `cloudstack_ssvm_tlscert`: The path to the full TLS certificate including
+  intermediates for `*.{{ cloudstack_ssvm_hostname }}`.
+  NOTE: Should be the output path from certbot.
+- `cloudstack_ssvm_tlskey`: The path to the TLS private key for the certificate.
 - `mariadb_root_password`: Required. Same password as used during deployment of
   mariadb. Currently assumes MariaDB is running on the same node as part of the
   cluster.  Should be stored in the vault.

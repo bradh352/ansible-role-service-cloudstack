@@ -35,7 +35,9 @@
     cmk_bootstrap: "{{ 'true' if cmk_has_api_key.stdout | length == 0 and inventory_hostname == cmk_bootstrap_node else 'false' }}"
 
 - name: "CMK: Set up cloudmonkey"
-  shell: "cmk sync"
+  shell: |
+   cmk set url http://localhost:8123/client/api && \
+   cmk sync
   when: cmk_bootstrap
 
 - name: "CMK: Retrieve admin user id"
@@ -83,6 +85,12 @@
     owner: root
   when: cmk_has_api_key.stdout | length == 0 and not cmk_bootstrap
 
+- name: "CMK: Make sure old port is not in use"
+  ansible.builtin.replace:
+    path: /root/.cmk/config
+    regexp: 'http://localhost:8080/client/api'
+    replace: 'http://localhost:8123/client/api'
+
 - name: "CMK: Set up cloudmonkey"
   shell: "cmk sync"
   changed_when: false # don't care if this changes, not easy to detect
@@ -92,7 +100,6 @@
   vars:
     cmk_config_key: "{{ item.key }}"
     cmk_config_val: "{{ item.val }}"
-  when: item.val is defined
   with_items:
     - { key: "cpu.overprovisioning.factor",        val: "{{ cloudstack_cpu_overprovision }}" }
     - { key: "storage.overprovisioning.factor",    val: "{{ cloudstack_disk_overprovision }}" }
@@ -121,11 +128,13 @@
     - { key: "storage.max.volume.size",            val: "10240" }
     - { key: "vm.network.throttling.rate",         val: "0" }
     - { key: "network.throttling.rate",            val: "0" }
-    - { key: "enable.additional.vm.configuration", val: "{{ 'true' if cloudstack_allow_pci_passthrough else 'false' }}" }  # Needed to pass additional XML to libvirt. 'allow.additional.vm.configuration.list.kvm' would need to be set for users to be able to add XML.
-    - { key: "allow.additional.vm.configuration.list.kvm", val: "{{ 'devices,alias,hostdev,driver,source,target,address' if cloudstack_allow_pci_passthrough else omit }}" }
+    - { key: "enable.additional.vm.configuration", val: "{{ 'true' if cloudstack_allow_pci_passthrough|default(false) else 'false' }}" }  # Needed to pass additional XML to libvirt. 'allow.additional.vm.configuration.list.kvm' would need to be set for users to be able to add XML.
+    - { key: "allow.additional.vm.configuration.list.kvm", val: "{{ 'devices,alias,hostdev,driver,source,target,address' if cloudstack_allow_pci_passthrough|default(false) else '' }}" }
     - { key: "vm.min.memory.equals.memory.divided.by.mem.overprovisioning.factor", val: "false" }
     - { key: "expunged.resources.purge.enabled",   val: "true" }
     - { key: "endpoint.url",                       val: "{{ 'https://' ~ cloudstack_hostname ~ '/client/api' }}" }
+    - { key: "consoleproxy.url.domain",            val: "*.{{ cloudstack_console_hostname }}" }
+    - { key: "secstorage.ssl.cert.domain",         val: "*.{{ cloudstack_ssvm_hostname }}" }
     - { key: "saml2.enabled",                      val: "{{ 'true' if cloudstack_saml_enable else 'false' }}" }
   run_once: true
 
