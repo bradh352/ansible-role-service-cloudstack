@@ -1,0 +1,5 @@
+{# Execute once per day, but skew every 5 minutes per node so they don't run in parallel. #}
+{% set idx = groups['cloudstack_kvm'] | sort | ansible.utils.index_of('eq', inventory_hostname) %}
+{% set hour=(idx // 12) %}
+{% set minute=(idx % 12) * 5 %}
+{{ minute }} {{ hour }} * * * root systemctl restart cloudstack-agent

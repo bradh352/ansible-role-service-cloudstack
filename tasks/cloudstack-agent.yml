@@ -207,5 +207,12 @@
     - "5900:6100" #VNC consoles)
     - "49152:49216" #libvirt live migration
 
+- name: "BUG: Workaround agent issues by restarting daily"
+  template:
+    src: cloudstack-agentrestart.cron
+    dest: /etc/cron.d/cloudstack-agentrestart
+    owner: root
+    mode: 0644
+
 - name: "Flush handlers"
   meta: flush_handlers
