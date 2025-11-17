@@ -8,8 +8,8 @@ server {
     listen 443 ssl;
     server_name {{ cloudstack_hostname }};
 
-    ssl_certificate /etc/letsencrypt/live/{{ cloudstack_hostname }}/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/{{ cloudstack_hostname }}/privkey.pem;
+    ssl_certificate {{ cloudstack_tlscert }};
+    ssl_certificate_key {{ cloudstack_tlskey }};
 
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_ciphers 'TLS-CHACHA20-POLY1305-SHA256:TLS-AES-256-GCM-SHA384:TLS-AES-128-GCM-SHA256:EECDH+CHACHA20:EECDH+AESGCM:EECDH+AES256:EECDH+AES128';

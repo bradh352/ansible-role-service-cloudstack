@@ -26,7 +26,9 @@ with these additional executed in the below order:
      database access (cloudstack locking doesn't allow any node to be used).
    - It may also be desirable to create a Virtual IP for the cloudstack
      management interface, however, something like HAProxy could also be used
-     to balance traffic across nodes.
+     to balance traffic across nodes
+ - [service_certbot](https://github.com/bradh352/ansible-role-service-certbot)
+   - Used to provision TLS certificates
 
 ## Groups used by this role
 - `cloudstack_mgmt`: Members that will have management nodes deployed
@@ -55,18 +57,14 @@ database is always `cloud_usage`.  There is no ability to change these.
   This will automatically update the `endpoint.url` setting like:
   `https://{cloudstack_hostname}/client/api`.  A DNS `A` record is required to
   point to this name with the Virtual IP assigned to the cloudstack instance.
-- `cloudstack_hostname_console`: This is the console hostname suffix. Console
-  proxies will use domain names in the form of
-  `aaa-bbb-ccc-ddd.{{ cloudstack_hostname_console }}`.  This value will be
-  stored into `consoleproxy.url.domain`.  A wildcard `A` DNS record is required
-  to be specified for this hostname and should likely point to the same Virtual
-  IP as `cloudstack_hostname`.
-- `cloudstack_hostname_ssvm`: This is the Secondary Storage VM (ssvm) hostname
-  suffix. SSVM instances will use domain names in the form of
-  `aaa-bbb-ccc-ddd.{{ cloudstack_hostname_ssvm }}`.  This value will be
-  stored into `secstorage.ssl.cert.domain`.  A wildcard `A` DNS record is
-  required to be specified for this hostname and should likely point to the same
-  Virtual IP as `cloudstack_hostname`.
+  **NOTE**: Additionally `*.{{ cloudstack_hostname }}` must be in DNS to support
+  SSVM and ConsoleProxy.  The console proxy and ssvm will use
+  `aaa-bbb-ccc-ddd.{{ cloudstack_hostname }}`.
+- `cloudstack_tlscert`: The path to the full TLS certificate including
+  intermediates.  The certificate must support the `cloudstack_hostname` as
+  well as `*.{{ cloudstack_hostname }}`.
+  NOTE: Should be the output path from certbot.
+- `cloudstack_tlskey`: The path to the TLS private key for the certificate.
 - `mariadb_root_password`: Required. Same password as used during deployment of
   mariadb. Currently assumes MariaDB is running on the same node as part of the
   cluster.  Should be stored in the vault.
