@@ -1,0 +1,66 @@
+{%- macro regex_gen_zeros_end(val, cnt) %}
+{{- val - (val % (10 ** cnt)) -}}
+{%- endmacro %}
+
+{%- macro regex_gen_nines_end(val, cnt) %}
+{{- (val|string)[:-cnt] ~ ('9' * cnt) -}}
+{%- endmacro %}
+
+{%- macro regex_gen_split_ranges(min_, max_) %}
+{%-   set stops = [max_] %}
+{%-   set ns = namespace(nines_count=1, zeros_count=1, stop="") %}
+{%-   set ns.stop = regex_gen_nines_end(min_, ns.nines_count) | int %}
+{%-   for i in range(1000) %}
+{%-     if min_ <= ns.stop and ns.stop < max_ %}
+{%-       do stops.append(ns.stop) %}
+{%-       set ns.nines_count = ns.nines_count + 1 %}
+{%-       set ns.stop = regex_gen_nines_end(min_, ns.nines_count) | int %}
+{%-     else %}
+{%-       break %}
+{%-     endif %}
+{%-   endfor %}
+{%-   set ns.stop = (regex_gen_zeros_end(max_ + 1, ns.zeros_count) | int) - 1 %}
+{%-   for i in range(1000) %}
+{%-     if min_ < ns.stop and ns.stop <= max_ %}
+{%-       do stops.append(ns.stop) %}
+{%-       set ns.zeros_count = ns.zeros_count + 1 %}
+{%-       set ns.stop = (regex_gen_zeros_end(max_ + 1, ns.zeros_count) | int ) - 1 %}
+{%-     else %}
+{%-       break %}
+{%-     endif %}
+{%-   endfor %}
+{{- stops | unique | sort -}}
+{%- endmacro %}
+
+{%- macro regex_gen_range_to_pattern(start, stop) %}
+{%-   set ns = namespace(pattern="", any_digit_count=0) %}
+{%-   set len = [ start | string | length, stop | string | length ] | min %}
+{%-   for i in range(len) %}
+{%-     set start_digit = (start | string)[i] %}
+{%-     set stop_digit = (stop | string)[i] %}
+{%-     if start_digit == stop_digit %}
+{%-       set ns.pattern = ns.pattern ~ start_digit %}
+{%-     elif start_digit != '0' or stop_digit != '9' %}
+{%-       set ns.pattern = ns.pattern ~ "[" ~ start_digit ~ "-" ~ stop_digit ~ "]" %}
+{%-     else %}
+{%-       set ns.any_digit_count = ns.any_digit_count + 1 %}
+{%-     endif %}
+{%-   endfor %}
+{%-   if ns.any_digit_count > 0 %}
+{%-     set ns.pattern = ns.pattern ~ "\d" %}
+{%-   endif %}
+{%-   if ns.any_digit_count > 1 %}
+{%-     set ns.pattern = ns.pattern ~ "{" ~ ns.any_digit_count ~ "}" %}
+{%-   endif %}
+{{- ns.pattern -}}
+{%- endmacro %}
+
+{%- macro regex_gen_range(min_, max_) %}
+{%-   set subpatterns = [] %}
+{%-   set ns = namespace(start=min_) %}
+{%-   for stop in regex_gen_split_ranges(min_, max_) | from_yaml %}
+{%-     do subpatterns.append(regex_gen_range_to_pattern(ns.start, stop)) %}
+{%-     set ns.start = stop + 1 %}
+{%-   endfor %}
+{{- subpatterns | join("|") -}}
+{%- endmacro %}

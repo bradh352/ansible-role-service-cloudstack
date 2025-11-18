@@ -75,6 +75,9 @@ database is always `cloud_usage`.  There is no ability to change these.
   intermediates for `*.{{ cloudstack_ssvm_hostname }}`.
   NOTE: Should be the output path from certbot.
 - `cloudstack_ssvm_tlskey`: The path to the TLS private key for the certificate.
+- `cloudstack_public_subnet`: The subnet for the public network.  This is used
+  to generate a rule for the allowed proxy ip addresses for ssvm and consoleproxy.
+  e.g. `192.168.1.0/24` or `10.10.16.0/20`
 - `mariadb_root_password`: Required. Same password as used during deployment of
   mariadb. Currently assumes MariaDB is running on the same node as part of the
   cluster.  Should be stored in the vault.

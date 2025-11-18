@@ -1,3 +1,27 @@
+{% import 'macros/regex_gen.j2' as r %}
+{# We need to generate a regex for this subnet in the form of: #}
+{#   "(?<ip_octet1>...)-(?<ip_octet2>...)-(?<ip_octet3>...)-(?<ip_octet4>...)" #}
+{# This is used for pattern matching of the public ip address in the server name #}
+{# to prevent security issues with allowing proxying of non-public addresses #}
+{% set ip_range = cloudstack_public_subnet | ipaddr('range_usable') %}
+{% set start_ip = ip_range.split('-')[0] %}
+{% set end_ip   = ip_range.split('-')[1] %}
+{% set ns = namespace(regex="") %}
+{% for i in range(4) %}
+{%   if i != 0 %}
+{%     set ns.regex = ns.regex ~ "-" %}
+{%   endif %}
+{%   set minoct = start_ip.split('.')[i]|int %}
+{%   set maxoct = end_ip.split('.')[i]|int %}
+{%   if minoct != maxoct and minoct == 1 %}
+{%     set minoct = minoct - 1 %}
+{%   endif %}
+{%   if maxoct != minoct and maxoct == 254 %}
+{%     set maxoct = maxoct + 1 %}
+{%   endif %}
+{%   set ns.regex = ns.regex ~ "(?<ip_octet" ~ (i+1) ~ ">(" ~ r.regex_gen_range(minoct, maxoct) ~ "))" %}
+{% endfor %}
+
 # Redirect 80->443 always
 server {
     listen 80;
@@ -39,7 +63,7 @@ server {
 server {
     listen 443 ssl;
     listen 8080 ssl;
-    server_name ~^(?<ip_octet1>\d+)-(?<ip_octet2>\d+)-(?<ip_octet3>\d+)-(?<ip_octet4>\d+)\.{{ cloudstack_console_hostname | replace('.', '\\.') }}$;
+    server_name "~^{{ ns.regex }}\.{{ cloudstack_console_hostname | replace('.', '\\.') }}$";
 
     ssl_certificate {{ cloudstack_console_tlscert }};
     ssl_certificate_key {{ cloudstack_console_tlskey }};
@@ -83,7 +107,7 @@ server {
 # Cloudstack secondary storage vm (ssvm)
 server {
     listen 443 ssl;
-    server_name ~^(?<ip_octet1>\d+)-(?<ip_octet2>\d+)-(?<ip_octet3>\d+)-(?<ip_octet4>\d+)\.{{ cloudstack_ssvm_hostname | replace('.', '\\.') }}$;
+    server_name "~^{{ ns.regex }}\.{{ cloudstack_ssvm_hostname | replace('.', '\\.') }}$";
 
     ssl_certificate {{ cloudstack_ssvm_tlscert }};
     ssl_certificate_key {{ cloudstack_ssvm_tlskey }};
