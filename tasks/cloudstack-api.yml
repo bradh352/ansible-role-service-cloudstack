@@ -129,7 +129,7 @@
     - { key: "vm.network.throttling.rate",         val: "0" }
     - { key: "network.throttling.rate",            val: "0" }
     - { key: "enable.additional.vm.configuration", val: "{{ 'true' if cloudstack_allow_pci_passthrough|default(false) else 'false' }}" }  # Needed to pass additional XML to libvirt. 'allow.additional.vm.configuration.list.kvm' would need to be set for users to be able to add XML.
-    - { key: "allow.additional.vm.configuration.list.kvm", val: "{{ 'devices,alias,hostdev,driver,source,target,address' if cloudstack_allow_pci_passthrough|default(false) else '' }}" }
+    - { key: "allow.additional.vm.configuration.list.kvm", val: "{{ 'devices,alias,hostdev,driver,source,target,address' if cloudstack_allow_pci_passthrough|default(false) else 'null' }}" }
     - { key: "vm.min.memory.equals.memory.divided.by.mem.overprovisioning.factor", val: "false" }
     - { key: "expunged.resources.purge.enabled",   val: "true" }
     - { key: "endpoint.url",                       val: "{{ 'https://' ~ cloudstack_hostname ~ '/client/api' }}" }
