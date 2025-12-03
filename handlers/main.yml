@@ -12,6 +12,11 @@
 - name: "ufw_reload"
   shell: "ufw reload"
 
+- name: sysfs_restart
+  service:
+    name: sysfs
+    state: restarted
+
 - name: "cloudstack_agent_restart"
   throttle: 1
   service:

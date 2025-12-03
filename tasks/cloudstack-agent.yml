@@ -4,6 +4,7 @@
     pkg:
       - "cloudstack-agent"
       - "ovmf"
+      - "sysfsutils"
     state: latest
   notify: cloudstack_agent_restart
 
@@ -206,6 +207,17 @@
     - "16514" #libvirt
     - "5900:6100" #VNC consoles)
     - "49152:49216" #libvirt live migration
+
+- name: "KSM: more aggressive settings"
+  copy:
+    dest: /etc/sysfs.d/ksm.conf
+    mode: "644"
+    owner: root
+    content: |
+      kernel/mm/ksm/run = 1
+      kernel/mm/ksm/sleep_millisecs = 50
+      kernel/mm/ksm/pages_to_scan = 4000
+  notify: sysfs_restart
 
 - name: "BUG: Workaround agent issues by restarting daily"
   template:
