@@ -1,6 +1,7 @@
 ---
 cloudstack_db_user: cloudstack
 cloudstack_cpu_overprovision: 4
+cloudstack_mem_overprovision: 1.25
 cloudstack_disk_overprovision: 10
 cloudstack_saml_enable: false
 cloudstack_saml_user_attribute: "uid"

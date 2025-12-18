@@ -123,7 +123,7 @@
     - { key: "drs.metric.type",                    val: "used" }
     - { key: "drs.metric.use.ratio",               val: "true" }
     - { key: "vpc.max.networks",                   val: "21" }  # This is actually a KVM limit due to the PCI bus, past this we get failures
-    - { key: "mem.overprovisioning.factor",        val: "1.25" }
+    - { key: "mem.overprovisioning.factor",        val: "{{ cloudstack_mem_overprovision }}" }
     - { key: "custom.diskoffering.size.max",       val: "10240" }
     - { key: "storage.max.volume.size",            val: "10240" }
     - { key: "vm.network.throttling.rate",         val: "0" }
