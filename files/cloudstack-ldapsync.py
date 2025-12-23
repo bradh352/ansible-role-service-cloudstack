@@ -749,7 +749,9 @@ def users_not_in(list1: Dict[str, User], list2: Dict[str, User]) -> List[User]:
         users List[User]: list of users in list1 that are not in list2
     """
 
-    return [user for user in list1.values() if user.username not in list2]
+    list2_casefold = { x.casefold() for x in list2 }
+
+    return [user for user in list1.values() if user.username.casefold() not in list2_casefold]
 
 
 def groups_not_in(list1: Dict[str, Group], list2: Dict[str, Group], ignore_list1_disabled: bool = False) -> List[Group]:
@@ -765,7 +767,8 @@ def groups_not_in(list1: Dict[str, Group], list2: Dict[str, Group], ignore_list1
     Returns:
         users List[Group]: list of groups in list1 that are not in list2, possibly filtering out disabled list1 groups
     """
-    return [g for g in list1.values() if g.name not in list2 and (g.enabled or not ignore_list1_disabled)]
+    list2_casefold = { x.casefold() for x in list2 }
+    return [g for g in list1.values() if g.name.casefold() not in list2_casefold and (g.enabled or not ignore_list1_disabled)]
 
 
 def user_match_auth(ldap_user: User, cs_user: User) -> bool:
