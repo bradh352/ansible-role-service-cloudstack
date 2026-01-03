@@ -219,12 +219,12 @@
       kernel/mm/ksm/pages_to_scan = 4000
   notify: sysfs_restart
 
-- name: "BUG: Workaround agent issues by restarting daily"
-  template:
-    src: cloudstack-agentrestart.cron
-    dest: /etc/cron.d/cloudstack-agentrestart
-    owner: root
-    mode: 0644
+#- name: "BUG: Workaround agent issues by restarting daily"
+#  template:
+#    src: cloudstack-agentrestart.cron
+#    dest: /etc/cron.d/cloudstack-agentrestart
+#    owner: root
+#    mode: 0644
 
 - name: "Flush handlers"
   meta: flush_handlers
