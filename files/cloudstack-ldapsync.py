@@ -41,7 +41,7 @@ class Network:
     """Data class containing permissions for a Network"""
 
     uuid: str
-    group: str
+    groups: List[str]
     members: Dict[str, None]
 
 
@@ -144,9 +144,12 @@ def sync(config_path: str, cloudmonkey_config_path: str, dry_run: bool):
             cs_project_mod(cs_client, group, cs_projects[group.name], ldap_users, dry_run)
 
     for _, network in cs_nets.items():
-        if network.members != ldap_groups[network.group].members:
+        ldap_network_groups_members = {}
+        for group in network.groups:
+            ldap_network_groups_members.update(ldap_groups[group].members)
+        if network.members != ldap_network_groups_members:
             print(f" * Updating network {network.uuid} membership")
-            cs_network_mod(cs_client, ldap_groups[network.group], network, ldap_users, dry_run)
+            cs_network_mod(cs_client, ldap_network_groups_members, network, ldap_users, dry_run)
 
     print("Sync Complete")
 
@@ -335,13 +338,13 @@ def cs_project_mod(
                     )
 
 
-def cs_network_mod(client: CloudStack, ldap_group: Group, network: Network, ldap_users: Dict[str, User], dry_run: bool):
+def cs_network_mod(client: CloudStack, ldap_group_members: Dict[str, None], network: Network, ldap_users: Dict[str, User], dry_run: bool):
     """
     Modify Network account membership.
 
     Parameters:
         client [ClientStack]: Connected and logged in CloudStack session
-        ldap_group [Group]: Updated group from LDAP
+        ldap_group_members [Dict[str, None]]: Updated group from LDAP
         network [Network]: Network to compare membership
         ldap_users [Dict[str, User]]: List of known users in LDAP.  Used to exclude group membership changes for
             deleted users.
@@ -353,7 +356,7 @@ def cs_network_mod(client: CloudStack, ldap_group: Group, network: Network, ldap
 
     print(f"   * Updating Network {network.uuid}")
 
-    for member in ldap_group.members:
+    for member in ldap_group_members:
         if member not in network.members:
             # We may have a member that isn't actually in the system, skip
             if member not in ldap_users:
@@ -365,7 +368,7 @@ def cs_network_mod(client: CloudStack, ldap_group: Group, network: Network, ldap
                     accounts=member,
                 )
     for member in network.members:
-        if member not in ldap_group.members:
+        if member not in ldap_group_members:
             # On user deletion, we've pre-cached group membership, but it will be auto-removed so skip
             # deleted users.
             if member not in ldap_users:
@@ -647,7 +650,7 @@ def fetch_cloudstack(
         network = network.strip()
         if len(network) > 0:
             network = network.split("=")
-            list_networks[network[0]] = network[1]
+            list_networks[network[0]] = network[1].split(";")
 
     users = {}
     csusers = cs_client.listAccounts(listall=True)
@@ -725,14 +728,14 @@ def fetch_cloudstack(
             idps[idp.orgname] = idp
 
     networks = {}
-    for uuid, group in list_networks.items():
+    for uuid, groups in list_networks.items():
         members = {}
         csnets = cs_client.listNetworkPermissions(networkid=uuid)
         for member in csnets["networkpermission"]:
             if "project" in member:
                 continue
             members[member["account"]] = None
-        networks[uuid] = Network(uuid=uuid, group=group, members=members)
+        networks[uuid] = Network(uuid=uuid, groups=groups, members=members)
 
     return users, groups, roles, idps, networks
 

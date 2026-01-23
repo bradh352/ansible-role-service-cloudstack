@@ -151,10 +151,15 @@ database is always `cloud_usage`.  There is no ability to change these.
   here do *not* need to also be added to `groups_allowed`.  This also allows
   groups to be matched using fnmatch() patterns, such as `cs_*`.
 - `cloudstack_saml_network_groups`: Dictionary of Network ID to group mappings.
-  The network ID is the UUID in Cloudstack, the group name is the IdP group
-  name.  Each member of the group will be granted access to the given network.
-  This can be used for things like L2 Networks. E.g.:
-  `"783536ad-c803-40c6-bc10-93d6ba112083": "Software Engineering"`
+  The network ID is the UUID in Cloudstack, the group is an IdP group that is
+  either a single string group name or a list of group name.  Each member of the
+  groups specified will be granted access to the given network. This can be used
+  for things like L2 Networks. E.g.:
+```
+"783536ad-c803-40c6-bc10-93d6ba112083":
+  - "Software Engineering"
+  - "TPS Group"
+```
 - `cloudstack_saml_attr_username`: LDAP attribute for username, defaults to
   `uid`.
 - `cloudstack_saml_attr_fname`: LDAP attribute for first name, defaults to
