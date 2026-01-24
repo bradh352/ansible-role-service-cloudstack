@@ -644,6 +644,7 @@ def fetch_cloudstack(
     # Internal system account, filter out, says should never be deleted:
     #   https://cwiki.apache.org/confluence/display/CLOUDSTACK/Baremetal+Advanced+Networking+Support
     ignore_users.append("baremetal-system-account")
+    ignore_users.append("admin")
     ignore_projects = config["cloudstack"]["ignore_projects"].split(",")
     list_networks = {}
     for network in config["cloudstack"]["network_groups"].split(","):
@@ -728,14 +729,14 @@ def fetch_cloudstack(
             idps[idp.orgname] = idp
 
     networks = {}
-    for uuid, groups in list_networks.items():
+    for uuid, netgroups in list_networks.items():
         members = {}
         csnets = cs_client.listNetworkPermissions(networkid=uuid)
         for member in csnets["networkpermission"]:
             if "project" in member:
                 continue
             members[member["account"]] = None
-        networks[uuid] = Network(uuid=uuid, groups=groups, members=members)
+        networks[uuid] = Network(uuid=uuid, groups=netgroups, members=members)
 
     return users, groups, roles, idps, networks
 
