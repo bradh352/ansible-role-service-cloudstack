@@ -1,16 +1,15 @@
 ---
 # NOTE: the name does partial matches, so we have to filter with jq for an exact match
 - name: "Get Configuration: {{ cmk_config_key }}"
-  shell: |
+  ansible.builtin.shell: |
     cmk list configurations name={{ cmk_config_key }} | jq -r '.configuration[] | select(.name=="{{ cmk_config_key }}").value'
   changed_when: false
   register: cmk
 
 - name: "Set Configuration: {{ cmk_config_key }} = {{ cmk_config_val }}"
   when: cmk.stdout != cmk_config_val
-  shell: "cmk update configuration name={{ cmk_config_key }} value={{ cmk_config_val }}"
-
+  ansible.builtin.command: "cmk update configuration name={{ cmk_config_key }} value={{ cmk_config_val }}"
 - name: "Track if configuration changed"
   when: cmk.stdout != cmk_config_val
-  set_fact:
+  ansible.builtin.set_fact:
     cmk_config_changed: true

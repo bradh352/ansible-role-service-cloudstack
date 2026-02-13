@@ -1,6 +1,6 @@
 ---
 - name: "APT: see if we have a keyring"
-  stat:
+  ansible.builtin.stat:
     path: /etc/apt/trusted.gpg.d/cloudstack.asc
   register: keyring_exists
 
@@ -13,11 +13,11 @@
   register: keyring
 
 - name: "APT: Import Key"
-  shell: "apt-key add /etc/apt/trusted.gpg.d/cloudstack.asc"
+  ansible.builtin.command: "apt-key add /etc/apt/trusted.gpg.d/cloudstack.asc"
   when: keyring.changed
 
 - name: "APT: Install cloudstack repository"
-  template:
+  ansible.builtin.template:
     src: cloudstack.sources.j2
     dest: /etc/apt/sources.list.d/cloudstack.sources
     owner: root
@@ -30,11 +30,11 @@
   when: repo.changed
 
 - name: Configure for Cloudstack Management
-  import_tasks: "cloudstack-mgmt.yml"
+  ansible.builtin.import_tasks: "cloudstack-mgmt.yml"
   when: inventory_hostname in groups["cloudstack_mgmt"]
 
 - name: Configure for Cloudstack KVM Hypervisor
-  import_tasks: "cloudstack-agent.yml"
+  ansible.builtin.import_tasks: "cloudstack-agent.yml"
   when: inventory_hostname in groups["cloudstack_kvm"]
 
 # SystemVM is supposedly bundled with the official packages these days so no need to download and install.
@@ -44,9 +44,9 @@
 #  run_once: true
 
 - name: Configure via CloudMonkey
-  import_tasks: "cloudstack-api.yml"
+  ansible.builtin.import_tasks: "cloudstack-api.yml"
   when: inventory_hostname in groups["cloudstack_mgmt"]
 
 - name: Sync users/projects from LDAP
-  import_tasks: "cloudstack-ldapsync.yml"
+  ansible.builtin.import_tasks: "cloudstack-ldapsync.yml"
   when: inventory_hostname in groups["cloudstack_mgmt"] and cloudstack_saml_enable

@@ -1,8 +1,8 @@
 ---
 - name: "CMK: Determine nodes which are initialized with API Keys"
-  shell:  "grep ^apikey /root/.cmk/config | sed -E 's/.*=(.*)/\\1/' | sed -E 's/ //g'"
+  ansible.builtin.shell: "grep ^apikey /root/.cmk/config | sed -E 's/.*=(.*)/\\1/' | sed -E 's/ //g'"
   delegate_to: "{{ item }}"
-  ignore_unreachable: yes
+  ignore_unreachable: true
   ignore_errors: true
   failed_when: false
   changed_when: false
@@ -11,74 +11,67 @@
   with_items: "{{ groups['cloudstack_mgmt']|unique|sort }}"
 
 - name: "CMK: Determine which node to use for boostrapping"
-  set_fact:
+  ansible.builtin.set_fact:
     cmk_bootstrap_node: >-
-      {%- set eligible_hosts = [] %}
-      {%- for node in cmk_bootstrap_nodes.results %}
-      {%-   if node.stdout|default("")|length > 0 %}
-      {%-     do eligible_hosts.append(node.item) %}
-      {%-   endif %}
-      {%- endfor %}
-      {%- if eligible_hosts | length == 0 %}
-      {%-   do eligible_hosts.append(groups['cloudstack_mgmt']|unique|sort|first) %}
-      {%- endif %}
-      {{- eligible_hosts[0] -}}
+      {%- set eligible_hosts = [] %}{%- for node in cmk_bootstrap_nodes.results %}{%-   if node.stdout | default("") | length > 0 %}{%-     do eligible_hosts.append(node.item)
+      %}{%-   endif %}{%- endfor %}{%- if eligible_hosts | length == 0 %}{%-   do eligible_hosts.append(groups['cloudstack_mgmt'] | unique | sort | first) %}{%- endif
+      %}{{- eligible_hosts[0] -}}
 
 - name: "CMK: See if an API key is configured"
-  shell:  "grep ^apikey /root/.cmk/config | sed -E 's/.*=(.*)/\\1/' | sed -E 's/ //g'"
+  ansible.builtin.shell: "grep ^apikey /root/.cmk/config | sed -E 's/.*=(.*)/\\1/' | sed -E 's/ //g'"
   changed_when: false
   no_log: true
   register: cmk_has_api_key
 
 - name: "CMK: Check to see if we need to bootstrap"
-  set_fact:
+  ansible.builtin.set_fact:
     cmk_bootstrap: "{{ 'true' if cmk_has_api_key.stdout | length == 0 and inventory_hostname == cmk_bootstrap_node else 'false' }}"
 
 - name: "CMK: Set up cloudmonkey"
-  shell: |
-   cmk set url http://localhost:8123/client/api && \
-   cmk sync
+  ansible.builtin.shell: |
+    cmk set url http://localhost:8123/client/api && \
+    cmk sync
   when: cmk_bootstrap
 
 - name: "CMK: Retrieve admin user id"
-  shell: "cmk list users username=admin | jq -r .user[0].id"
+  ansible.builtin.shell: "cmk list users username=admin | jq -r .user[0].id"
   register: cmk_user_id
   when: cmk_bootstrap
 
 - name: "CMK: Generate admin API key"
-  shell: "cmk register userkeys id={{ cmk_user_id.stdout }}"
+  ansible.builtin.command: "cmk register userkeys id={{ cmk_user_id.stdout }}"
   no_log: true
   register: cmk_userkeys
   when: cmk_bootstrap
 
 - name: "CMK: Parse API Key"
-  set_fact:
+  ansible.builtin.set_fact:
     cmk_api_key: "{{ cmk_userkeys.stdout | from_yaml }}"
   no_log: true
   when: cmk_bootstrap
 
 - name: "CMK: Configure API keys"
-  shell: |
+  ansible.builtin.shell: |
     cmk set apikey {{ cmk_api_key.userkeys.apikey }}
     cmk set secretkey {{ cmk_api_key.userkeys.secretkey }}
   no_log: true
   when: cmk_bootstrap
 
 - name: "CMK: Fetch the CMK configuration"
-  shell: base64 /root/.cmk/config
+  ansible.builtin.command: base64 /root/.cmk/config
   register: cmk_config_data
   when: cmk_has_api_key.stdout | length == 0 and not cmk_bootstrap
   delegate_to: "{{ cmk_bootstrap_node }}"
 
 - name: "CMK: ensure config directory exists"
-  file:
+  ansible.builtin.file:
     path: /root/.cmk
     state: directory
     mode: "770"
     owner: root
 
 - name: "CMK: Install configuration"
-  copy:
+  ansible.builtin.copy:
     dest: "/root/.cmk/config"
     content: "{{ cmk_config_data.stdout | b64decode }}"
     mode: "600"
@@ -88,74 +81,75 @@
 - name: "CMK: Make sure old port is not in use"
   ansible.builtin.replace:
     path: /root/.cmk/config
-    regexp: 'http://localhost:8080/client/api'
-    replace: 'http://localhost:8123/client/api'
+    regexp: "http://localhost:8080/client/api"
+    replace: "http://localhost:8123/client/api"
 
 - name: "CMK: Set up cloudmonkey"
-  shell: "cmk sync"
+  ansible.builtin.command: "cmk sync"
   changed_when: false # don't care if this changes, not easy to detect
 
 - name: "Set configuration options"
-  include_tasks: "cloudstack-set-config.yml"
+  ansible.builtin.include_tasks: "cloudstack-set-config.yml"
   vars:
     cmk_config_key: "{{ item.key }}"
     cmk_config_val: "{{ item.val }}"
   with_items:
-    - { key: "cpu.overprovisioning.factor",        val: "{{ cloudstack_cpu_overprovision }}" }
-    - { key: "storage.overprovisioning.factor",    val: "{{ cloudstack_disk_overprovision }}" }
-    - { key: "secstorage.vm.mtu.size",             val: "{{ ansible_facts[cloudstack_mgmt_interface]['mtu']|default(1500) }}" }
-    - { key: "management.network.cidr",            val: "{{ cloudstack_management_subnet }}" }
-    - { key: "host",                               val: "{{ cloudstack_management_ips | join(',') }}" }
-    - { key: "enable.dynamic.scale.vm",            val: "true" }
-    - { key: "ipv6.offering.enabled",              val: "true" }
-    - { key: "vm.stats.interval",                  val: "60000" }
-    - { key: "kvm.vmstoragesnapshot.enabled",      val: "true" }
-    - { key: "kvm.snapshot.enabled",               val: "true" }
-    - { key: "kvm.auto.convergence",               val: "true" }
-    - { key: "kvm.storage.pool.io.policy",         val: "io_uring" }
-    - { key: "drs.algorithm",                      val: "balanced" }
-    - { key: "drs.automatic.enable",               val: "true" }
-    - { key: "drs.automatic.interval",             val: "60" }
-    - { key: "drs.imbalance",                      val: "0.75" }
+    - { key: "cpu.overprovisioning.factor", val: "{{ cloudstack_cpu_overprovision }}" }
+    - { key: "storage.overprovisioning.factor", val: "{{ cloudstack_disk_overprovision }}" }
+    - { key: "secstorage.vm.mtu.size", val: "{{ ansible_facts[cloudstack_mgmt_interface]['mtu'] | default(1500) }}" }
+    - { key: "management.network.cidr", val: "{{ cloudstack_management_subnet }}" }
+    - { key: "host", val: "{{ cloudstack_management_ips | join(',') }}" }
+    - { key: "enable.dynamic.scale.vm", val: "true" }
+    - { key: "ipv6.offering.enabled", val: "true" }
+    - { key: "vm.stats.interval", val: "60000" }
+    - { key: "kvm.vmstoragesnapshot.enabled", val: "true" }
+    - { key: "kvm.snapshot.enabled", val: "true" }
+    - { key: "kvm.auto.convergence", val: "true" }
+    - { key: "kvm.storage.pool.io.policy", val: "io_uring" }
+    - { key: "drs.algorithm", val: "balanced" }
+    - { key: "drs.automatic.enable", val: "true" }
+    - { key: "drs.automatic.interval", val: "60" }
+    - { key: "drs.imbalance", val: "0.75" }
     - { key: "drs.imbalance.condensed.skip.threshold", val: "0.95" }
-    - { key: "drs.max.migrations",                 val: "50" }
-    - { key: "drs.metric",                         val: "memory" }
-    - { key: "drs.metric.type",                    val: "used" }
-    - { key: "drs.metric.use.ratio",               val: "true" }
-    - { key: "vpc.max.networks",                   val: "21" }  # This is actually a KVM limit due to the PCI bus, past this we get failures
-    - { key: "mem.overprovisioning.factor",        val: "{{ cloudstack_mem_overprovision }}" }
-    - { key: "custom.diskoffering.size.max",       val: "10240" }
-    - { key: "storage.max.volume.size",            val: "10240" }
-    - { key: "vm.network.throttling.rate",         val: "0" }
-    - { key: "network.throttling.rate",            val: "0" }
-    - { key: "allow.user.expunge.recover.vm",      val: "true" }
-    - { key: "enable.additional.vm.configuration", val: "{{ 'true' if cloudstack_allow_pci_passthrough|default(false) else 'false' }}" }  # Needed to pass additional XML to libvirt. 'allow.additional.vm.configuration.list.kvm' would need to be set for users to be able to add XML.
-    - { key: "allow.additional.vm.configuration.list.kvm", val: "{{ 'devices,alias,hostdev,driver,source,target,address' if cloudstack_allow_pci_passthrough|default(false) else 'null' }}" }
+    - { key: "drs.max.migrations", val: "50" }
+    - { key: "drs.metric", val: "memory" }
+    - { key: "drs.metric.type", val: "used" }
+    - { key: "drs.metric.use.ratio", val: "true" }
+    - { key: "vpc.max.networks", val: "21" } # This is actually a KVM limit due to the PCI bus, past this we get failures
+    - { key: "mem.overprovisioning.factor", val: "{{ cloudstack_mem_overprovision }}" }
+    - { key: "custom.diskoffering.size.max", val: "10240" }
+    - { key: "storage.max.volume.size", val: "10240" }
+    - { key: "vm.network.throttling.rate", val: "0" }
+    - { key: "network.throttling.rate", val: "0" }
+    - { key: "allow.user.expunge.recover.vm", val: "true" }
+    - { key: "enable.additional.vm.configuration", val: "{{ 'true' if cloudstack_allow_pci_passthrough | default(false) else 'false' }}" } # Needed to pass additional XML to libvirt. 'allow.additional.vm.configuration.list.kvm' would need to be set for users to be able to add XML.
+    - key: "allow.additional.vm.configuration.list.kvm"
+      val: "{{ 'devices,alias,hostdev,driver,source,target,address' if cloudstack_allow_pci_passthrough | default(false) else 'null' }}"
     - { key: "vm.min.memory.equals.memory.divided.by.mem.overprovisioning.factor", val: "false" }
-    - { key: "expunged.resources.purge.enabled",   val: "true" }
-    - { key: "endpoint.url",                       val: "{{ 'https://' ~ cloudstack_hostname ~ '/client/api' }}" }
-    - { key: "consoleproxy.url.domain",            val: "*.{{ cloudstack_console_hostname }}" }
-    - { key: "secstorage.ssl.cert.domain",         val: "*.{{ cloudstack_ssvm_hostname }}" }
-    - { key: "saml2.enabled",                      val: "{{ 'true' if cloudstack_saml_enable else 'false' }}" }
+    - { key: "expunged.resources.purge.enabled", val: "true" }
+    - { key: "endpoint.url", val: "{{ 'https://' ~ cloudstack_hostname ~ '/client/api' }}" }
+    - { key: "consoleproxy.url.domain", val: "*.{{ cloudstack_console_hostname }}" }
+    - { key: "secstorage.ssl.cert.domain", val: "*.{{ cloudstack_ssvm_hostname }}" }
+    - { key: "saml2.enabled", val: "{{ 'true' if cloudstack_saml_enable else 'false' }}" }
   run_once: true
 
 - name: "Set SAML options"
-  include_tasks: "cloudstack-set-config.yml"
+  ansible.builtin.include_tasks: "cloudstack-set-config.yml"
   vars:
     cmk_config_key: "{{ item.key }}"
     cmk_config_val: "{{ item.val }}"
   when: cloudstack_saml_enable
   with_items:
     - { key: "saml2.append.idpdomain", val: "false" }
-    - { key: "saml2.check.signature",  val: "true" }
-    - { key: "saml2.default.idpid",    val: "{{ cloudstack_saml_metadata_url | urlsplit('hostname') }}" }
+    - { key: "saml2.check.signature", val: "true" }
+    - { key: "saml2.default.idpid", val: "{{ cloudstack_saml_metadata_url | urlsplit('hostname') }}" }
     - { key: "saml2.idp.metadata.url", val: "{{ cloudstack_saml_metadata_url }}" }
-    - { key: "saml2.redirect.url",     val: "{{ 'https://' ~ cloudstack_hostname ~ '/client' }}" }
-    - { key: "saml2.sigalg",           val: "SHA256" }
-    - { key: "saml2.sp.id",            val: "org.apache.cloudstack" }
-    - { key: "saml2.sp.slo.url",       val: "{{ 'https://' ~ cloudstack_hostname ~ '/client' }}" }
-    - { key: "saml2.sp.sso.url",       val: "{{ 'https://' ~ cloudstack_hostname ~ '/client/api?command=samlSso' }}" }
-    - { key: "saml2.user.attribute",   val: "{{ cloudstack_saml_user_attribute }}" }
+    - { key: "saml2.redirect.url", val: "{{ 'https://' ~ cloudstack_hostname ~ '/client' }}" }
+    - { key: "saml2.sigalg", val: "SHA256" }
+    - { key: "saml2.sp.id", val: "org.apache.cloudstack" }
+    - { key: "saml2.sp.slo.url", val: "{{ 'https://' ~ cloudstack_hostname ~ '/client' }}" }
+    - { key: "saml2.sp.sso.url", val: "{{ 'https://' ~ cloudstack_hostname ~ '/client/api?command=samlSso' }}" }
+    - { key: "saml2.user.attribute", val: "{{ cloudstack_saml_user_attribute }}" }
   run_once: true
 
 # Hack since we need to restart on all nodes, but the variable that gets set
@@ -163,8 +157,7 @@
 - name: "After configuration changes, may need to restart"
   run_once: true
   when: cmk_config_changed|default(false)
-  script: "cloudstack_mgmt_start.sh 1"
+  ansible.builtin.script: "cloudstack_mgmt_start.sh 1"
   delegate_to: "{{ item }}"
-  ignore_unreachable: yes
+  ignore_unreachable: true
   with_items: "{{ groups['cloudstack_mgmt'] }}"
-

@@ -1,33 +1,31 @@
 ---
 - name: "libvirt_restart"
-  service:
+  ansible.builtin.service:
     name: libvirtd
     state: restarted
 
 - name: "ufw_restart"
-  service:
+  ansible.builtin.service:
     name: ufw
     state: restarted
 
 - name: "ufw_reload"
-  shell: "ufw reload"
-
+  ansible.builtin.command: "ufw reload"
 - name: sysfs_restart
-  service:
+  ansible.builtin.service:
     name: sysfs
     state: restarted
 
 - name: "cloudstack_agent_restart"
   throttle: 1
-  service:
+  ansible.builtin.service:
     name: cloudstack-agent
     state: restarted
 
 - name: "cloudstack_mgmt_restart"
   throttle: 1
-  script: "cloudstack_mgmt_start.sh 1"
-
+  ansible.builtin.script: "cloudstack_mgmt_start.sh 1"
 - name: "nginx_restart"
-  service:
+  ansible.builtin.service:
     name: nginx
     state: restarted

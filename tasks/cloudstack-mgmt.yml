@@ -10,25 +10,19 @@
   notify: cloudstack_mgmt_restart
 
 - name: "Determine mariadb unix socket path"
-  set_fact:
+  ansible.builtin.set_fact:
     mariadb_sock: "{{ '/var/lib/mysql/mysql.sock' if ansible_os_family == 'Redhat' else '/run/mysqld/mysqld.sock' }}"
 
 - name: "Determine IPs that might be used to connect to DB"
-  set_fact:
+  ansible.builtin.set_fact:
     cloudstack_db_src_ips: >-
-      {%- set iplist = [ ] %}
-      {%- for subnet in mariadb_cluster_vips %}
-      {%-   for addr in ansible_facts['all_ipv4_addresses'] + ansible_facts['all_ipv6_addresses'] %}
-      {%-     if addr | ansible.utils.ipaddr(subnet) is not none %}
-      {%-       do iplist.append(addr) %}
-      {%-     endif %}
-      {%-   endfor %}
-      {%- endfor %}
-      {{- iplist -}}
+      {%- set iplist = [] %}{%- for subnet in mariadb_cluster_vips %}{%-   for addr in ansible_facts['all_ipv4_addresses'] + ansible_facts['all_ipv6_addresses'] %}{%-     if
+      addr | ansible.utils.ipaddr(subnet) is not none %}{%-       do iplist.append(addr) %}{%-     endif %}{%-   endfor %}{%- endfor %}{{- iplist -}}
 
 - name: "Determine management subnet"
-  set_fact:
-    cloudstack_management_subnet: "{{ (ansible_facts[cloudstack_mgmt_interface]['ipv4']['address'] ~ '/' ~ ansible_facts[cloudstack_mgmt_interface]['ipv4']['prefix']) | ansible.utils.ipaddr('subnet') }}"
+  ansible.builtin.set_fact:
+    cloudstack_management_subnet: "{{ (ansible_facts[cloudstack_mgmt_interface]['ipv4']['address'] ~ '/' ~ ansible_facts[cloudstack_mgmt_interface]['ipv4']['prefix'])
+      | ansible.utils.ipaddr('subnet') }}"
 
 - name: "Fetch network facts for other nodes"
   ansible.builtin.setup:
@@ -41,7 +35,7 @@
   with_items: "{{ groups['cloudstack_mgmt'] }}"
 
 - name: "Determine management server ips"
-  set_fact:
+  ansible.builtin.set_fact:
     cloudstack_management_ips: >-
       {%- set iplist = [ ] %}
       {%- for host in groups["cloudstack_mgmt"] %}
@@ -94,9 +88,9 @@
     password: "{{ cloudstack_db_password }}"
     state: present
     priv:
-      'cloud.*': 'ALL,GRANT'
-      'cloud_usage.*': 'ALL,GRANT'
-      '*.*': 'PROCESS'
+      "cloud.*": "ALL,GRANT"
+      "cloud_usage.*": "ALL,GRANT"
+      "*.*": "PROCESS"
     host: "{{ item }}"
   with_items:
     - "localhost"
@@ -115,9 +109,9 @@
     password: "{{ cloudstack_db_password }}"
     state: present
     priv:
-      'cloud.*': 'ALL,GRANT'
-      'cloud_usage.*': 'ALL,GRANT'
-      '*.*': 'PROCESS'
+      "cloud.*": "ALL,GRANT"
+      "cloud_usage.*": "ALL,GRANT"
+      "*.*": "PROCESS"
     host: "{{ item }}"
   with_items: "{{ cloudstack_db_src_ips }}"
   throttle: 1
@@ -129,21 +123,21 @@
     login_unix_socket: "{{ mariadb_sock }}"
     login_db: "cloud"
     filter:
-    - databases
+      - databases
     exclude_fields: db_size
     return_empty_dbs: true
   register: cloudstack_db_info
 
 - name: See if configuration exists
-  stat:
+  ansible.builtin.stat:
     path: "/etc/cloudstack/management/db.properties"
   register: db_file
 
 - name: See if this node has valid configuration
-  lineinfile:
+  ansible.builtin.lineinfile:
     dest: "/etc/cloudstack/management/db.properties"
     line: "{{ item }}"
-  check_mode: yes
+  check_mode: true
   register: db_config
   failed_when: false
   with_items:
@@ -152,7 +146,7 @@
     - "cluster.node.IP={{ ansible_facts[cloudstack_mgmt_interface]['ipv4']['address'] }}"
 
 - name: "Ensure cloudstack services are stopped if configuration changed"
-  service:
+  ansible.builtin.service:
     name: "{{ item }}"
     state: stopped
   with_items:
@@ -161,18 +155,23 @@
   when: db_config.changed or not db_file.stat.exists or cloudstack_db_info.databases["cloud"].tables == 0
 
 - name: Determine which node to use to set up cloudstack database
-  set_fact:
+  ansible.builtin.set_fact:
     cloudstack_bootstrap_node: "{{ groups['cloudstack_mgmt'] | intersect(ansible_play_hosts) | sort | first }}"
   when: cloudstack_db_info.databases["cloud"].tables == 0
 
 - name: Setup cloudstack database on bootstrap node
-  shell: "cloudstack-setup-databases '{{ cloudstack_db_user }}:{{ cloudstack_db_password }}@{{ mariadb_cluster_vips[0].split('/')[0] }}' {{ '--schema-only --force-recreate' if cloudstack_db_info.databases['cloud'].tables == 0 else '' }} --mshost={{ ansible_facts[cloudstack_mgmt_interface]['ipv4']['address'] }} --encrypt-type=file --managementserver-secretkey='{{ cloudstack_mgmt_key }}' --database-secretkey='{{ cloudstack_db_key }}'"
+  ansible.builtin.command: "cloudstack-setup-databases '{{ cloudstack_db_user }}:{{ cloudstack_db_password }}@{{ mariadb_cluster_vips[0].split('/')[0] }}' {{ '--schema-only
+    --force-recreate' if cloudstack_db_info.databases['cloud'].tables == 0 else '' }} --mshost={{ ansible_facts[cloudstack_mgmt_interface]['ipv4']['address'] }} --encrypt-type=file
+    --managementserver-secretkey='{{ cloudstack_mgmt_key }}' --database-secretkey='{{ cloudstack_db_key }}'"
   when: inventory_hostname == cloudstack_bootstrap_node|default("")
   run_once: true
 
 - name: Generate local configuration on secondary nodes
-  shell: "cloudstack-setup-databases '{{ cloudstack_db_user }}:{{ cloudstack_db_password }}@{{ mariadb_cluster_vips[0].split('/')[0] }}' --mshost={{ ansible_facts[cloudstack_mgmt_interface]['ipv4']['address'] }} --encrypt-type=file --managementserver-secretkey='{{ cloudstack_mgmt_key }}' --database-secretkey='{{ cloudstack_db_key }}'"
-  when: (cloudstack_db_info.databases["cloud"].tables == 0 or db_config.changed or not db_file.stat.exists) and inventory_hostname != cloudstack_bootstrap_node|default("")
+  ansible.builtin.command: "cloudstack-setup-databases '{{ cloudstack_db_user }}:{{ cloudstack_db_password }}@{{ mariadb_cluster_vips[0].split('/')[0] }}' --mshost={{
+    ansible_facts[cloudstack_mgmt_interface]['ipv4']['address'] }} --encrypt-type=file --managementserver-secretkey='{{ cloudstack_mgmt_key }}' --database-secretkey='{{
+    cloudstack_db_key }}'"
+  when: (cloudstack_db_info.databases["cloud"].tables == 0 or db_config.changed or not db_file.stat.exists) and inventory_hostname !=
+    cloudstack_bootstrap_node|default("")
 
 - name: "UFW: Enable Cloudstack Management Ports"
   community.general.ufw:
@@ -184,7 +183,7 @@
     - 9090
 
 - name: Update keepalive database parameters
-  lineinfile:
+  ansible.builtin.lineinfile:
     dest: "/etc/cloudstack/management/db.properties"
     regexp: "^{{ item.key }}=.*"
     line: "{{ item.key }}={{ item.val }}"
@@ -202,7 +201,7 @@
   notify: "{{ 'cloudstack_mgmt_restart' if not (db_config.changed or cloudstack_db_info.databases['cloud'].tables == 0) else omit }}"
 
 - name: Update server parameters
-  lineinfile:
+  ansible.builtin.lineinfile:
     dest: "/etc/cloudstack/management/server.properties"
     regexp: "^{{ item.key }}=.*"
     line: "{{ item.key }}={{ item.val }}"
@@ -211,26 +210,26 @@
   notify: "{{ 'cloudstack_mgmt_restart' if not (db_config.changed or cloudstack_db_info.databases['cloud'].tables == 0) else omit }}"
 
 - name: "Determine if cloudstack is running"
-  shell: systemctl is-active cloudstack-management
+  ansible.builtin.command: systemctl is-active cloudstack-management
   changed_when: false
   failed_when: false
   register: cloudstack_running
 
 - name: "Determine if cloudstack is in a good state"
-  shell: "curl -s -o /dev/null -L -w '%{http_code}' http://localhost:8123/"
+  ansible.builtin.shell: "curl -s -o /dev/null -L -w '%{http_code}' http://localhost:8123/"
   failed_when: false
   changed_when: false
   register: cloudstack_http_code
   when: cloudstack_running.rc == 0
 
 - name: "Shutdown cloudstack management that is in a bad state"
-  service:
+  ansible.builtin.service:
     name: cloudstack-management
     state: stopped
   when: cloudstack_running.rc == 0 and cloudstack_http_code.stdout|default("503") != "200"
 
 - name: "Bring up cloudstack management on first node"
-  shell: cloudstack-setup-management
+  ansible.builtin.command: cloudstack-setup-management
   when: inventory_hostname == cloudstack_bootstrap_node|default("")
 
 - name: "Wait for initialization of first node"
@@ -240,29 +239,29 @@
   when: inventory_hostname == cloudstack_bootstrap_node|default("")
 
 - name: "Bring up cloudstack management (non-bootstrap)"
-  when: (cloudstack_running.rc != 0 or cloudstack_http_code.stdout|default("503") != "200" or db_config.changed or not db_file.stat.exists or cloudstack_db_info.databases["cloud"].tables == 0) and inventory_hostname != cloudstack_bootstrap_node|default("")
+  when: (cloudstack_running.rc != 0 or cloudstack_http_code.stdout|default("503") != "200" or db_config.changed or not db_file.stat.exists or
+    cloudstack_db_info.databases["cloud"].tables == 0) and inventory_hostname != cloudstack_bootstrap_node|default("")
   throttle: 1
-  script: "cloudstack_mgmt_start.sh 1"
-
+  ansible.builtin.script: "cloudstack_mgmt_start.sh 1"
 - name: "Link Usage Key"
-  file:
+  ansible.builtin.file:
     src: /etc/cloudstack/management/key
     dest: /etc/cloudstack/usage/key
     state: link
 
 - name: "Ensure Usage server is started"
-  service:
+  ansible.builtin.service:
     name: cloudstack-usage
     state: started
 
 - name: "Ensure /etc/nginx/sites-enabled/default is deleted"
-  file:
+  ansible.builtin.file:
     path: "/etc/nginx/sites-enabled/default"
     state: absent
   notify: nginx_restart
 
 - name: "Install nginx configuration"
-  template:
+  ansible.builtin.template:
     src: nginx-cloudstack.j2
     dest: /etc/nginx/sites-available/cloudstack
     owner: root
@@ -270,7 +269,7 @@
   notify: nginx_restart
 
 - name: "Nginx: enable cloudstack"
-  file:
+  ansible.builtin.file:
     src: /etc/nginx/sites-available/cloudstack
     dest: /etc/nginx/sites-enabled/cloudstack
     state: link

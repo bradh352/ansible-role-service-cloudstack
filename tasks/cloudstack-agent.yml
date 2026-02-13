@@ -9,22 +9,22 @@
   notify: cloudstack_agent_restart
 
 - name: Create the cloudstack user
-  user:
+  ansible.builtin.user:
     name: "cloudstack"
-    create_home: yes
+    create_home: true
     shell: "/bin/bash"
     state: present
     password: "!"
     update_password: always
 
 - name: Update sudoers for cloudstack agent setup requiretty
-  lineinfile:
+  ansible.builtin.lineinfile:
     path: /etc/sudoers
     line: "Defaults:cloudstack     !requiretty"
     insertafter: "^#Defaults:.*"
 
 - name: Update sudoers for cloudstack agent setup nopasswd
-  lineinfile:
+  ansible.builtin.lineinfile:
     path: /etc/sudoers
     line: "cloudstack ALL=NOPASSWD: {{ item }}"
     insertafter: "^root.*"
@@ -36,38 +36,38 @@
     - "/usr/sbin/update-rc.d"
 
 - name: See if public key is registered
-  stat:
+  ansible.builtin.stat:
     path: /home/cloudstack/.ssh/authorized_keys
   register: authorized_keys
 
 - name: Fetch management node public key
-  slurp:
+  ansible.builtin.slurp:
     src: /var/lib/cloudstack/management/.ssh/id_rsa.pub
   register: public_key
   delegate_to: "{{ groups['cloudstack_mgmt'] | first }}"
   when: not authorized_keys.stat.exists
 
 - name: "Ensure /home/cloudstack/.ssh exists"
-  file:
+  ansible.builtin.file:
     path: "/home/cloudstack/.ssh/"
     state: directory
-    mode: 0700
+    mode: "0700"
     owner: "cloudstack"
     group: "cloudstack"
 
 - name: "Make sure the public key for ssh authentication is configured for the cloudstack user"
-  lineinfile:
+  ansible.builtin.lineinfile:
     path: "/home/cloudstack/.ssh/authorized_keys"
     state: present
-    create: yes
+    create: true
     owner: cloudstack
     group: cloudstack
-    mode: 0600
+    mode: "0600"
     line: "{{ public_key['content'] | b64decode }}"
   when: not authorized_keys.stat.exists
 
 - name: "Calculate reserved memory"
-  set_fact:
+  ansible.builtin.set_fact:
     reserved_mem: >-
       {%- set ceph_mon   = (2048 if inventory_hostname in groups["ceph_" + ceph_cluster_name|default("") + "_mon"]|default([]) else 0) %}
       {%- set ceph_mds   = (2048 if inventory_hostname in groups["ceph_" + ceph_cluster_name|default("") + "_mds"]|default([]) else 0) %}
@@ -78,7 +78,7 @@
       {{- ceph_mon + ceph_mds + ceph_osd + mariadb + cloudstack -}}
 
 - name: "cloudstack enable UEFI in agent"
-  copy:
+  ansible.builtin.copy:
     src: uefi.properties
     dest: /etc/cloudstack/agent/uefi.properties
     mode: "644"
@@ -99,27 +99,27 @@
   notify: libvirt_restart
 
 - name: "cloudstack agent set cpu model"
-  lineinfile:
+  ansible.builtin.lineinfile:
     path: /etc/cloudstack/agent/agent.properties
     regexp: "^#?{{ item.key | replace('.', '\\.') }} ?= ?.*"
     line: "{{ item.key }}={{ item.val }}"
   with_items:
-    - { key: 'hypervisor.type',            val: "kvm" }
-    - { key: 'guest.cpu.mode',             val: 'host-model' }
-    - { key: 'vm.memballoon.disable',      val: 'false' }
-    - { key: 'vm.memballoon.stats.period', val: '10' }
-    - { key: 'libvirt.events.enabled',     val: 'true' }
-    - { key: 'host.reserved.mem.mb',       val: "{{ reserved_mem }}" }
-    - { key: "vm.rng.enable",              val: "true" }
+    - { key: "hypervisor.type", val: "kvm" }
+    - { key: "guest.cpu.mode", val: "host-model" }
+    - { key: "vm.memballoon.disable", val: "false" }
+    - { key: "vm.memballoon.stats.period", val: "10" }
+    - { key: "libvirt.events.enabled", val: "true" }
+    - { key: "host.reserved.mem.mb", val: "{{ reserved_mem }}" }
+    - { key: "vm.rng.enable", val: "true" }
   notify: cloudstack_agent_restart
 
 - name: "See if cloudstack TLS key has been created"
-  stat:
+  ansible.builtin.stat:
     path: /etc/cloudstack/agent/cloud.key
   register: cloudstack_agent_key
 
 - name: "setup libvirt for cloudstack"
-  lineinfile:
+  ansible.builtin.lineinfile:
     path: /etc/libvirt/libvirtd.conf
     line: "{{ item.key }} = {{ item.val }}"
     regexp: "^#?{{ item.key }} *=.*"
@@ -133,14 +133,14 @@
   notify: libvirt_restart
 
 - name: "setup libvirt for cloudstack /etc/default"
-  lineinfile:
+  ansible.builtin.lineinfile:
     path: /etc/default/libvirtd
     line: 'LIBVIRTD_ARGS="--listen"'
     regexp: "^#?LIBVIRTD_ARGS=.*"
   notify: libvirt_restart
 
 - name: "setup libvirt for cloudstack"
-  lineinfile:
+  ansible.builtin.lineinfile:
     path: /etc/libvirt/libvirt.conf
     line: 'remote_mode="legacy"'
     regexp: "^#?remote_mode *=.*"
@@ -160,34 +160,34 @@
   notify: libvirt_restart
 
 - name: "Create symlinks to disable apparmor"
-  file:
+  ansible.builtin.file:
     state: link
     src: "{{ item.src }}"
     dest: "{{ item.dest }}"
   with_items:
-    - { src: '/etc/apparmor.d/usr.sbin.libvirtd', dest: '/etc/apparmor.d/disable/usr.sbin.libvirtd' }
-    - { src: '/etc/apparmor.d/usr.lib.libvirt.virt-aa-helper', dest: '/etc/apparmor.d/disable/usr.lib.libvirt.virt-aa-helper' }
+    - { src: "/etc/apparmor.d/usr.sbin.libvirtd", dest: "/etc/apparmor.d/disable/usr.sbin.libvirtd" }
+    - { src: "/etc/apparmor.d/usr.lib.libvirt.virt-aa-helper", dest: "/etc/apparmor.d/disable/usr.lib.libvirt.virt-aa-helper" }
   register: disable_apparmor
 
 - name: "Load apparmor profile"
-  shell: "apparmor_parser -R /etc/apparmor.d/usr.sbin.libvirtd && apparmor_parser -R /etc/apparmor.d/usr.lib.libvirt.virt-aa-helper"
+  ansible.builtin.shell: "apparmor_parser -R /etc/apparmor.d/usr.sbin.libvirtd && apparmor_parser -R /etc/apparmor.d/usr.lib.libvirt.virt-aa-helper"
   when: disable_apparmor.changed
 
 - name: "Configure for vxlan evpn"
-  copy:
+  ansible.builtin.copy:
     src: modifyvxlan-evpn.sh
     dest: /usr/share/modifyvxlan.sh
     mode: "755"
 
 - name: "UFW: Load bridge module"
-  lineinfile:
+  ansible.builtin.lineinfile:
     path: /etc/default/ufw
     line: 'IPT_MODULES="bridge"'
     regexp: "^IPT_MODULES"
   notify: ufw_restart
 
 - name: "UFW: Don't apply rules on bridge traffic"
-  lineinfile:
+  ansible.builtin.lineinfile:
     path: /etc/ufw/sysctl.conf
     line: "{{ item.key }} = {{ item.val }}"
     regexp: "^{{ item.key }}.*"
@@ -204,12 +204,12 @@
     proto: tcp
   with_items:
     - "1798"
-    - "16514" #libvirt
-    - "5900:6100" #VNC consoles)
-    - "49152:49216" #libvirt live migration
+    - "16514" # libvirt
+    - "5900:6100" # VNC consoles)
+    - "49152:49216" # libvirt live migration
 
 - name: "KSM: more aggressive settings"
-  copy:
+  ansible.builtin.copy:
     dest: /etc/sysfs.d/ksm.conf
     mode: "644"
     owner: root
@@ -227,4 +227,4 @@
 #    mode: 0644
 
 - name: "Flush handlers"
-  meta: flush_handlers
+  ansible.builtin.meta: flush_handlers

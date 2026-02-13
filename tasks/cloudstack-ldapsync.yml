@@ -1,5 +1,4 @@
 ---
-
 - name: "LDAPSYNC: APT: Install components for sync script"
   ansible.builtin.apt:
     pkg:
@@ -9,28 +8,28 @@
     state: present
 
 - name: "LDAPSYNC: Install configuration"
-  template:
+  ansible.builtin.template:
     src: cloudstack-ldapsync.conf
     dest: /etc/cloudstack/ldapsync.conf
     owner: root
-    mode: 0600
+    mode: "0600"
 
 - name: "LDAPSYNC: Install sync script"
-  copy:
+  ansible.builtin.copy:
     src: cloudstack-ldapsync.py
     dest: /usr/local/bin/cloudstack-ldapsync.py
     owner: root
-    mode: 0700
+    mode: "0700"
 
 - name: "LDAPSYNC: Perform sync"
-  shell: /usr/local/bin/cloudstack-ldapsync.py
+  ansible.builtin.command: /usr/local/bin/cloudstack-ldapsync.py
   register: sync
   changed_when: sync.stdout_lines | count > 1
   run_once: true
 
 - name: "LDAPSYNC: Add cron task"
-  template:
+  ansible.builtin.template:
     src: cloudstack-ldapsync.cron
     dest: /etc/cron.d/cloudstack-ldapsync
     owner: root
-    mode: 0644
+    mode: "0644"
