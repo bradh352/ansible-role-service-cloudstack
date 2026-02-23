@@ -13,9 +13,16 @@
 - name: "CMK: Determine which node to use for boostrapping"
   ansible.builtin.set_fact:
     cmk_bootstrap_node: >-
-      {%- set eligible_hosts = [] %}{%- for node in cmk_bootstrap_nodes.results %}{%-   if node.stdout | default("") | length > 0 %}{%-     do eligible_hosts.append(node.item)
-      %}{%-   endif %}{%- endfor %}{%- if eligible_hosts | length == 0 %}{%-   do eligible_hosts.append(groups['cloudstack_mgmt'] | unique | sort | first) %}{%- endif
-      %}{{- eligible_hosts[0] -}}
+      {%- set eligible_hosts = [] %}
+      {%- for node in cmk_bootstrap_nodes.results %}
+      {%-   if node.stdout | default("") | length > 0 %}
+      {%-     do eligible_hosts.append(node.item) %}
+      {%-   endif %}
+      {%- endfor %}
+      {%- if eligible_hosts | length == 0 %}
+      {%-   do eligible_hosts.append(groups['cloudstack_mgmt'] | unique | sort | first) %}
+      {%- endif %}
+      {{- eligible_hosts[0] -}}
 
 - name: "CMK: See if an API key is configured"
   ansible.builtin.shell: "grep ^apikey /root/.cmk/config | sed -E 's/.*=(.*)/\\1/' | sed -E 's/ //g'"

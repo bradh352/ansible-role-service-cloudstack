@@ -16,8 +16,15 @@
 - name: "Determine IPs that might be used to connect to DB"
   ansible.builtin.set_fact:
     cloudstack_db_src_ips: >-
-      {%- set iplist = [] %}{%- for subnet in mariadb_cluster_vips %}{%-   for addr in ansible_facts['all_ipv4_addresses'] + ansible_facts['all_ipv6_addresses'] %}{%-     if
-      addr | ansible.utils.ipaddr(subnet) is not none %}{%-       do iplist.append(addr) %}{%-     endif %}{%-   endfor %}{%- endfor %}{{- iplist -}}
+      {%- set iplist = [] %}
+      {%- for subnet in mariadb_cluster_vips %}
+      {%-   for addr in ansible_facts['all_ipv4_addresses'] + ansible_facts['all_ipv6_addresses'] %}
+      {%-     if addr | ansible.utils.ipaddr(subnet) is not none %}
+      {%-       do iplist.append(addr) %}
+      {%-     endif %}
+      {%-   endfor %}
+      {%- endfor %}
+      {{- iplist -}}
 
 - name: "Determine management subnet"
   ansible.builtin.set_fact:
