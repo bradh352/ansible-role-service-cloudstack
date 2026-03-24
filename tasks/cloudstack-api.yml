@@ -32,7 +32,7 @@
 
 - name: "CMK: Check to see if we need to bootstrap"
   ansible.builtin.set_fact:
-    cmk_bootstrap: "{{ 'true' if cmk_has_api_key.stdout | length == 0 and inventory_hostname == cmk_bootstrap_node else 'false' }}"
+    cmk_bootstrap: "{{ true if cmk_has_api_key.stdout | length == 0 and inventory_hostname == cmk_bootstrap_node else false }}"
 
 - name: "CMK: Set up cloudmonkey"
   ansible.builtin.shell: |

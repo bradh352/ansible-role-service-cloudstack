@@ -3,7 +3,7 @@
 {#   "(?<ip_octet1>...)-(?<ip_octet2>...)-(?<ip_octet3>...)-(?<ip_octet4>...)" #}
 {# This is used for pattern matching of the public ip address in the server name #}
 {# to prevent security issues with allowing proxying of non-public addresses #}
-{% set ip_range = cloudstack_public_subnet | ipaddr('range_usable') %}
+{% set ip_range = cloudstack_public_subnet | ansible.utils.ipaddr('range_usable') %}
 {% set start_ip = ip_range.split('-')[0] %}
 {% set end_ip   = ip_range.split('-')[1] %}
 {% set ns = namespace(regex="") %}
