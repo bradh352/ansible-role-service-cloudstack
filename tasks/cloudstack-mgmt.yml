@@ -11,7 +11,7 @@
 
 - name: "Determine mariadb unix socket path"
   ansible.builtin.set_fact:
-    mariadb_sock: "{{ '/var/lib/mysql/mysql.sock' if ansible_os_family == 'Redhat' else '/run/mysqld/mysqld.sock' }}"
+    mariadb_sock: "{{ '/var/lib/mysql/mysql.sock' if ansible_facts['os_family'] == 'Redhat' else '/run/mysqld/mysqld.sock' }}"
 
 - name: "Determine IPs that might be used to connect to DB"
   ansible.builtin.set_fact:
