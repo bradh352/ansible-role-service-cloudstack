@@ -2,7 +2,7 @@
 # https://download.cloudstack.org/ubuntu
 X-Repolib-Name: Cloudstack
 Types: deb
-URIs: https://download.cloudstack.org/{{ ansible_distribution|lower }}
-Suites: {{ ansible_distribution_release }}
+URIs: https://download.cloudstack.org/{{ ansible_facts['distribution']|lower }}
+Suites: {{ ansible_facts['distribution_release'] }}
 Components: {{ cloudstack_version }}
 Signed-By: /etc/apt/trusted.gpg.d/cloudstack.asc
