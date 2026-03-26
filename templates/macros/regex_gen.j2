@@ -1,17 +1,9 @@
 {%- macro regex_gen_zeros_end(val, cnt) %}
-{%-   if cnt == 0 %}
-{{-     val -}}
-{%-   else %}
-{{-     val - (val % (10 ** cnt)) -}}
-{%-   endif %}
+{{- val - (val % (10 ** cnt)) -}}
 {%- endmacro %}
 
 {%- macro regex_gen_nines_end(val, cnt) %}
-{%-   if cnt == 0 %}
-{{-     val -}}
-{%-   else %}
-{{-     (val|string)[:-cnt] ~ ('9' * cnt) -}}
-{%-   endif %}
+{{- (val|string)[:-cnt] ~ ('9' * cnt) -}}
 {%- endmacro %}
 
 {%- macro regex_gen_split_ranges(min_, max_) %}
@@ -37,7 +29,7 @@
 {%-       break %}
 {%-     endif %}
 {%-   endfor %}
-{{- stops | unique | sort -}}
+{{- stops | unique | sort | string -}}
 {%- endmacro %}
 
 {%- macro regex_gen_range_to_pattern(start, stop) %}
@@ -66,9 +58,9 @@
 {%- macro regex_gen_range(min_, max_) %}
 {%-   set subpatterns = [] %}
 {%-   set ns = namespace(start=min_) %}
-{%-   for stop in regex_gen_split_ranges(min_, max_) %}
-{%-     do subpatterns.append(regex_gen_range_to_pattern(ns.start, stop | int)) %}
-{%-     set ns.start = (stop | int) + 1 %}
+{%-   for stop in regex_gen_split_ranges(min_, max_) | from_yaml %}
+{%-     do subpatterns.append(regex_gen_range_to_pattern(ns.start, stop)) %}
+{%-     set ns.start = stop + 1 %}
 {%-   endfor %}
 {{- subpatterns | join("|") -}}
 {%- endmacro %}
