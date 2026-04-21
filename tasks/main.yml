@@ -30,11 +30,11 @@
   when: repo.changed
 
 - name: Configure for Cloudstack Management
-  ansible.builtin.import_tasks: "cloudstack-mgmt.yml"
+  ansible.builtin.include_tasks: "cloudstack-mgmt.yml"
   when: inventory_hostname in groups["cloudstack_mgmt"]
 
 - name: Configure for Cloudstack KVM Hypervisor
-  ansible.builtin.import_tasks: "cloudstack-agent.yml"
+  ansible.builtin.include_tasks: "cloudstack-agent.yml"
   when: inventory_hostname in groups["cloudstack_kvm"]
 
 # SystemVM is supposedly bundled with the official packages these days so no need to download and install.
@@ -44,9 +44,9 @@
 #  run_once: true
 
 - name: Configure via CloudMonkey
-  ansible.builtin.import_tasks: "cloudstack-api.yml"
+  ansible.builtin.include_tasks: "cloudstack-api.yml"
   when: inventory_hostname in groups["cloudstack_mgmt"]
 
 - name: Sync users/projects from LDAP
-  ansible.builtin.import_tasks: "cloudstack-ldapsync.yml"
+  ansible.builtin.include_tasks: "cloudstack-ldapsync.yml"
   when: inventory_hostname in groups["cloudstack_mgmt"] and cloudstack_saml_enable
