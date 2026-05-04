@@ -71,7 +71,7 @@
     reserved_mem: >-
       {%- set ceph_mon   = (2048 if inventory_hostname in groups["ceph_" + ceph_cluster_name|default("") + "_mon"]|default([]) else 0) %}
       {%- set ceph_mds   = (2048 if inventory_hostname in groups["ceph_" + ceph_cluster_name|default("") + "_mds"]|default([]) else 0) %}
-      {# This assumes 3 OSDs per host @ 2G ea, really should count number of OSDs #}
+      {#- This assumes 3 OSDs per host @ 2G ea, really should count number of OSDs -#}
       {%- set ceph_osd   = (6144 if inventory_hostname in groups["ceph_" + ceph_cluster_name|default("") + "_osd"]|default([]) else 0) %}
       {%- set mariadb    = (mariadb_buffer_pool_size|default(4096) if mariadb_cluster_name is not defined else 0) %}
       {%- set cloudstack = (2048 if inventory_hostname in groups["cloudstack_mgmt"]|default("") else 0) %}
