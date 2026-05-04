@@ -7,9 +7,9 @@
   register: cmk
 
 - name: "Set Configuration: {{ cmk_config_key }} = {{ cmk_config_val }}"
-  when: cmk.stdout != cmk_config_val
+  when: cmk.stdout | string != cmk_config_val | string
   ansible.builtin.command: "cmk update configuration name={{ cmk_config_key }} value={{ cmk_config_val }}"
 - name: "Track if configuration changed"
-  when: cmk.stdout != cmk_config_val
+  when: cmk.stdout | string != cmk_config_val | string
   ansible.builtin.set_fact:
     cmk_config_changed: true
