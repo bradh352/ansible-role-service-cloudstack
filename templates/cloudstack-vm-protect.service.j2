@@ -1,0 +1,10 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Protect designated VMs + virtual routers from VM memory pressure
+After=libvirtd.service
+Wants=libvirtd.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/cloudstack-vm-protect.sh
+Nice=-5

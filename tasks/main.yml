@@ -37,6 +37,10 @@
   ansible.builtin.include_tasks: "cloudstack-agent.yml"
   when: inventory_hostname in groups["cloudstack_kvm"]
 
+- name: Bias VM memory reclaim/OOM away from designated critical VMs
+  ansible.builtin.include_tasks: "cloudstack-vm-protect.yml"
+  when: inventory_hostname in groups["cloudstack_kvm"]
+
 # SystemVM is supposedly bundled with the official packages these days so no need to download and install.
 #- name: Configure SystemVM Template
 #  import_tasks: "cloudstack-systemvm.yml"
