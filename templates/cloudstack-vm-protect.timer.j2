@@ -1,0 +1,11 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Periodically reconcile VM-tier memory protection
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec={{ cloudstack_protect_interval }}
+AccuracySec=15s
+
+[Install]
+WantedBy=timers.target

@@ -3,6 +3,26 @@ cloudstack_db_user: cloudstack
 cloudstack_cpu_overprovision: 4
 cloudstack_mem_overprovision: 1.25
 cloudstack_disk_overprovision: 10
+
+# VM-tier memory protection reconciler (see tasks/cloudstack-vm-protect.yml).
+# On a KVM host under memory pressure, reclaim and the OOM killer hit every VM
+# equally -- a latency-sensitive production guest as readily as an expendable
+# batch/CI guest. This shields a designated set so the throttle/kill lands on
+# the expendable tier instead. It decides WHO absorbs pressure, not whether
+# there is enough capacity.
+#
+# Off by default: the protected set is deployment-specific. To enable, list the
+# bridges whose guests are critical. CloudStack names VXLAN bridges brvx-<VNI>
+# and VLAN bridges brvlan<ID>, so a protected network's bridge name follows
+# from its VNI/VLAN, e.g.:
+#   cloudstack_vm_protect_enabled: true
+#   cloudstack_protect_bridges: ["brvx-49649"]
+cloudstack_vm_protect_enabled: false
+cloudstack_protect_bridges: []
+cloudstack_protect_vrs: true            # protect all virtual routers (r-*-VM, tenant gateways)
+cloudstack_protect_oom_score_adj: -800  # negative => spared by the OOM killer
+cloudstack_protect_interval: "90s"
+
 cloudstack_saml_enable: false
 cloudstack_saml_user_attribute: "uid"
 cloudstack_saml_use_ssl: true

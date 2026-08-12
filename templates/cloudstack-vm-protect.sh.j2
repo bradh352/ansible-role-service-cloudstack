@@ -1,0 +1,89 @@
+#!/bin/bash
+# {{ ansible_managed }}
+#
+# VM-tier memory protection reconciler.
+#
+# A machine.slice memory cap protects the HOST from VM memory exhaustion, but
+# when it engages it throttles/reclaims across ALL VMs equally, and at the hard
+# cap OOM-kills one. With no guidance that hits latency-sensitive production
+# guests as readily as the expendable batch/CI guests sharing the host.
+#
+# This reconciler biases both mechanisms toward the expendable tier:
+#   * memory.low  on the protected VM's cgroup  -> reclaim targets OTHER VMs first
+#   * oom_score_adj < 0 on its qemu process     -> the OOM killer picks OTHERS
+#   * memory.oom.group = 1 on every VM          -> kills a VM as one clean unit
+#
+# Protected = CloudStack virtual routers (r-*-VM, tenant network gateways)
+#             + any VM with a NIC on a bridge listed in the protected set.
+#
+# Runs periodically (systemd timer) so it covers already-running VMs, live
+# migrations, and newly-created nodes. It is a scalpel for WHO absorbs pressure,
+# not a capacity fix.
+#
+# With CLOUDSTACK_VM_PROTECT_CLEAR=1 in the environment, every VM is treated as
+# unprotected and all settings this script applies are reset -- used by the
+# role to leave a clean host when the feature is disabled.
+set -uo pipefail
+
+CLEAR="${CLOUDSTACK_VM_PROTECT_CLEAR:-0}"
+PROTECT_BRIDGES="{{ cloudstack_protect_bridges | join(' ') }}"
+PROTECT_VRS="{{ 'yes' if cloudstack_protect_vrs | bool else 'no' }}"
+PROT_ADJ="{{ cloudstack_protect_oom_score_adj }}"
+if [ "$CLEAR" = 1 ]; then
+  PROTECT_BRIDGES=""
+  PROTECT_VRS=no
+fi
+CG=/sys/fs/cgroup
+VIRSH="virsh -c qemu:///system"
+
+nprot=0; nother=0
+for name in $($VIRSH list --name 2>/dev/null); do
+  [ -z "$name" ] && continue
+  pid=$(pgrep -f -- "guest=$name," | head -1)
+  [ -z "${pid:-}" ] && continue
+
+  # Resolve the VM's systemd scope cgroup (cgroup v2: "0::/machine.slice/...scope/libvirt/emulator")
+  path=$(sed -n 's/^0:://p' "/proc/$pid/cgroup" 2>/dev/null)
+  case "$path" in
+    *.scope*) scdir="$CG${path%%.scope*}.scope" ;;
+    *) continue ;;
+  esac
+  [ -d "$scdir" ] || continue
+
+  # Clean whole-VM kills for every VM (kill the qemu as one unit, not a stray thread)
+  [ -e "$scdir/memory.oom.group" ] && echo "$([ "$CLEAR" = 1 ] && echo 0 || echo 1)" > "$scdir/memory.oom.group" 2>/dev/null || true
+
+  xml=$($VIRSH dumpxml "$name" 2>/dev/null) || continue
+
+  protect=0
+  if [ "$PROTECT_VRS" = yes ]; then
+    case "$name" in r-*-VM) protect=1 ;; esac
+  fi
+  if [ "$protect" -eq 0 ] && [ -n "$PROTECT_BRIDGES" ]; then
+    for br in $PROTECT_BRIDGES; do
+      if printf '%s' "$xml" | grep -q "source bridge='$br'"; then protect=1; break; fi
+    done
+  fi
+
+  if [ "$protect" -eq 1 ]; then
+    # memory.low = provisioned memory (currentMemory KiB -> bytes); best-effort protection
+    lowkib=$(printf '%s' "$xml" | grep -oE '<currentMemory[^>]*>[0-9]+' | grep -oE '[0-9]+$' | head -1)
+    if [ -n "${lowkib:-}" ] && [ -e "$scdir/memory.low" ]; then
+      echo $(( lowkib * 1024 )) > "$scdir/memory.low" 2>/dev/null || true
+    fi
+    echo "$PROT_ADJ" > "/proc/$pid/oom_score_adj" 2>/dev/null || true
+    nprot=$((nprot + 1))
+  else
+    # Ensure no stale protection lingers (e.g. a VM that was protected then reclassified/migrated)
+    [ -e "$scdir/memory.low" ] && echo 0 > "$scdir/memory.low" 2>/dev/null || true
+    if [ "$(cat "/proc/$pid/oom_score_adj" 2>/dev/null || echo 0)" != "0" ]; then
+      echo 0 > "/proc/$pid/oom_score_adj" 2>/dev/null || true
+    fi
+    nother=$((nother + 1))
+  fi
+done
+if [ "$CLEAR" = 1 ]; then
+  logger -t cloudstack-vm-protect "cleared protection on ${nother} VMs"
+else
+  logger -t cloudstack-vm-protect "reconciled: ${nprot} protected, ${nother} unprotected"
+fi

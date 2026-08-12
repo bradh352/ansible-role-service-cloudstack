@@ -1,0 +1,81 @@
+---
+# Deploy the VM-tier memory protection reconciler (see cloudstack-vm-protect.sh.j2).
+# A systemd timer periodically shields the VMs you designate as critical --
+# CloudStack virtual routers, and guests on nominated networks -- from
+# machine.slice memory reclaim/OOM, so the throttle/kill lands on the expendable
+# tier (batch/CI guests, etc.) instead. Complements a machine.slice memory cap:
+# the cap protects the host, this decides which tenants absorb the pressure.
+#
+# Disabled by default; the protected set is deployment-specific. See
+# defaults/main.yml. Turning it back off removes the units and clears the
+# protection the reconciler applied, rather than leaving it stale on the host.
+
+- name: "VM protect | Deploy the reconciler"
+  when: cloudstack_vm_protect_enabled | bool
+  block:
+    - name: "VM protect | Install the reconciler script"
+      ansible.builtin.template:
+        src: cloudstack-vm-protect.sh.j2
+        dest: /usr/local/sbin/cloudstack-vm-protect.sh
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: "VM protect | Install the systemd service + timer"
+      ansible.builtin.template:
+        src: "{{ item }}.j2"
+        dest: "/etc/systemd/system/{{ item }}"
+        owner: root
+        group: root
+        mode: "0644"
+      loop:
+        - cloudstack-vm-protect.service
+        - cloudstack-vm-protect.timer
+
+    - name: "VM protect | Enable and start the timer"
+      ansible.builtin.systemd_service:
+        name: cloudstack-vm-protect.timer
+        enabled: true
+        state: started
+        daemon_reload: true
+
+    - name: "VM protect | Apply once now so protection is live immediately"
+      ansible.builtin.command: /usr/local/sbin/cloudstack-vm-protect.sh
+      changed_when: false
+
+- name: "VM protect | Remove the reconciler when disabled"
+  when: not (cloudstack_vm_protect_enabled | bool)
+  block:
+    - name: "VM protect | Is the timer unit installed?"
+      ansible.builtin.stat:
+        path: /etc/systemd/system/cloudstack-vm-protect.timer
+      register: _vmp_timer
+
+    - name: "VM protect | Tear down"
+      when: _vmp_timer.stat.exists
+      block:
+        - name: "VM protect | Stop and disable the timer"
+          ansible.builtin.systemd_service:
+            name: cloudstack-vm-protect.timer
+            enabled: false
+            state: stopped
+
+        - name: "VM protect | Clear protection previously applied to running VMs"
+          ansible.builtin.command: /usr/local/sbin/cloudstack-vm-protect.sh
+          changed_when: true
+          environment:
+            CLOUDSTACK_VM_PROTECT_CLEAR: "1"
+          failed_when: false
+
+        - name: "VM protect | Remove the script and units"
+          ansible.builtin.file:
+            path: "{{ item }}"
+            state: absent
+          loop:
+            - /etc/systemd/system/cloudstack-vm-protect.timer
+            - /etc/systemd/system/cloudstack-vm-protect.service
+            - /usr/local/sbin/cloudstack-vm-protect.sh
+
+        - name: "VM protect | Reload systemd after removal"
+          ansible.builtin.systemd_service:
+            daemon_reload: true
