@@ -129,6 +129,11 @@
     - { key: "vm.network.throttling.rate", val: "0" }
     - { key: "network.throttling.rate", val: "0" }
     - { key: "allow.user.expunge.recover.vm", val: "true" }
+    # Destroy force-stops the guest instead of asking it to shut down. Short-lived
+    # guests are routinely destroyed before acpid is up, so the graceful request goes
+    # unanswered and the agent waits out stop.script.timeout (120s, agent-side) before
+    # destroying the domain anyway -- turning a ~12s expunge into a 2+ minute one.
+    - { key: "vm.destroy.forcestop", val: "true" }
     - { key: "enable.additional.vm.configuration", val: "{{ 'true' if cloudstack_allow_pci_passthrough | default(false) else 'false' }}" } # Needed to pass additional XML to libvirt. 'allow.additional.vm.configuration.list.kvm' would need to be set for users to be able to add XML.
     - key: "allow.additional.vm.configuration.list.kvm"
       val: "{{ 'devices,alias,hostdev,driver,source,target,address' if cloudstack_allow_pci_passthrough | default(false) else 'null' }}"
