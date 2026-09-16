@@ -4,6 +4,31 @@ cloudstack_cpu_overprovision: 4
 cloudstack_mem_overprovision: 1.25
 cloudstack_disk_overprovision: 10
 
+# --- Scheduler algorithms ---------------------------------------------------
+# Both of these have opt-in values that are NOT in stock CloudStack yet, so the
+# defaults here stay on stock values.  cloudstack-set-config.yml runs
+# `cmk update configuration`, and a value the management server does not
+# recognise fails the play.
+#
+# drs.algorithm -- stock ships "balanced" and "condensed".  "weighted" needs
+# apache/cloudstack#14111 (milestone 24.0); it balances CPU and memory together
+# instead of only whichever single metric drs.metric names.
+#
+# Under "weighted", drs.metric / drs.metric.type / drs.metric.use.ratio are
+# IGNORED -- they select the single metric the other two algorithms balance.
+# Host ranking is instead weighted by host.weighted.{cpu,memory}.{allocated,
+# used}.weight, and migration cost by drs.weighted.storage.motion.cost.  This
+# role does not set any of those; CloudStack's defaults apply.
+cloudstack_drs_algorithm: "balanced"
+#
+# vm.allocation.algorithm -- empty leaves the setting alone entirely, which is
+# the previous behaviour of this role (CloudStack's own default is "random").
+# Stock 4.22 accepts: random, firstfit, userdispersing,
+# userconcentratedpod_random, userconcentratedpod_firstfit,
+# firstfitleastconsumed.  "balancedweighted" needs apache/cloudstack#14109
+# (milestone 24.0).
+cloudstack_vm_allocation_algorithm: ""
+
 # VM-tier memory protection reconciler (see tasks/cloudstack-vm-protect.yml).
 # On a KVM host under memory pressure, reclaim and the OOM killer hit every VM
 # equally -- a latency-sensitive production guest as readily as an expendable

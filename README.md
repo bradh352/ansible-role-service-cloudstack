@@ -125,6 +125,24 @@ more makes the failure *likelier*, which is the trap the stock 5/5 pair sets.
 - `cloudstack_disk_overprovision`: Multiplier used for allowing Disk
   overprovisioning.  Default 10.
 - `cloudstack_allow_pci_passthrough`: Allow PCI Passthrough. Default `false`.
+- `cloudstack_drs_algorithm`: Cluster DRS algorithm (`drs.algorithm`). Default
+  `balanced`. Stock CloudStack accepts `balanced` and `condensed`; `weighted`
+  balances CPU and memory together rather than only the single metric named by
+  `drs.metric`, and requires
+  [apache/cloudstack#14111](https://github.com/apache/cloudstack/pull/14111)
+  (milestone 24.0).
+- `cloudstack_vm_allocation_algorithm`: Host allocator
+  (`vm.allocation.algorithm`). Default empty, which leaves the setting alone
+  (CloudStack's own default is `random`). Stock 4.22 accepts `random`,
+  `firstfit`, `userdispersing`, `userconcentratedpod_random`,
+  `userconcentratedpod_firstfit` and `firstfitleastconsumed`;
+  `balancedweighted` requires
+  [apache/cloudstack#14109](https://github.com/apache/cloudstack/pull/14109)
+  (milestone 24.0).
+
+  Setting either to a value the management server does not recognise makes
+  `cmk update configuration` fail the play, so leave them at stock unless the
+  deployment runs a build carrying those patches.
 
 #### TLS related variables
 

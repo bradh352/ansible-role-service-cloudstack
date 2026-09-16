@@ -113,12 +113,19 @@
     - { key: "kvm.snapshot.enabled", val: "true" }
     - { key: "kvm.auto.convergence", val: "true" }
     - { key: "kvm.storage.pool.io.policy", val: "io_uring" }
-    - { key: "drs.algorithm", val: "balanced" }
+    - { key: "drs.algorithm", val: "{{ cloudstack_drs_algorithm }}" }
     - { key: "drs.automatic.enable", val: "true" }
     - { key: "drs.automatic.interval", val: "60" }
     - { key: "drs.imbalance", val: "0.75" }
-    - { key: "drs.imbalance.condensed.skip.threshold", val: "0.95" }
     - { key: "drs.max.migrations", val: "50" }
+    # Only meaningful for the "condensed" algorithm.
+    - { key: "drs.imbalance.condensed.skip.threshold", val: "0.95" }
+    # These three choose and shape the SINGLE metric that the balanced and
+    # condensed algorithms rebalance on.  They are IGNORED by "weighted", which
+    # scores CPU and memory together via the host.weighted.* weights (see
+    # cloudstack_drs_algorithm in defaults/main.yml).  Kept because the role
+    # defaults to balanced -- but do not read them as describing what DRS
+    # balances on unless drs.algorithm is balanced or condensed.
     - { key: "drs.metric", val: "memory" }
     - { key: "drs.metric.type", val: "used" }
     - { key: "drs.metric.use.ratio", val: "true" }
@@ -143,6 +150,16 @@
     - { key: "consoleproxy.url.domain", val: "*.{{ cloudstack_console_hostname }}" }
     - { key: "secstorage.ssl.cert.domain", val: "*.{{ cloudstack_ssvm_hostname }}" }
     - { key: "saml2.enabled", val: "{{ 'true' if cloudstack_saml_enable else 'false' }}" }
+  run_once: true
+
+# Kept out of the list above so that an unset value leaves the setting
+# untouched rather than pinning it to a default this role picked.
+- name: "Set VM allocation algorithm"
+  ansible.builtin.include_tasks: "cloudstack-set-config.yml"
+  vars:
+    cmk_config_key: "vm.allocation.algorithm"
+    cmk_config_val: "{{ cloudstack_vm_allocation_algorithm }}"
+  when: cloudstack_vm_allocation_algorithm | default('') | length > 0
   run_once: true
 
 - name: "Set SAML options"
