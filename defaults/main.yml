@@ -21,6 +21,12 @@ cloudstack_vm_protect_enabled: false
 cloudstack_protect_bridges: []
 cloudstack_protect_vrs: true            # protect all virtual routers (r-*-VM, tenant gateways)
 cloudstack_protect_oom_score_adj: -800  # negative => spared by the OOM killer
+# CPU priority: CloudStack sets cpu.weight proportional to vCPU count, so a
+# CPU-heavy expendable guest (say 12 vCPU) outranks a smaller latency-sensitive
+# one (say 8 vCPU) and starves it under contention. Max weight on protected VMs
+# inverts that. Range 1-10000; the reconciler only resets weights above 1000, so
+# CloudStack's own per-VM weights are left alone on unprotected guests.
+cloudstack_protect_cpu_weight: 10000
 cloudstack_protect_interval: "90s"
 
 cloudstack_saml_enable: false
