@@ -8,9 +8,12 @@
 # cap OOM-kills one. With no guidance that hits latency-sensitive production
 # guests as readily as the expendable batch/CI guests sharing the host.
 #
-# This reconciler biases both mechanisms toward the expendable tier:
+# This reconciler biases MEMORY and CPU toward the expendable tier:
 #   * memory.low  on the protected VM's cgroup  -> reclaim targets OTHER VMs first
 #   * oom_score_adj < 0 on its qemu process     -> the OOM killer picks OTHERS
+#   * cpu.weight high on the protected scope    -> wins CPU under contention.
+#     CloudStack sets cpu.weight proportional to vCPU count, so a CPU-heavy
+#     expendable guest OUTRANKS a smaller latency-sensitive one and starves it.
 #   * memory.oom.group = 1 on every VM          -> kills a VM as one clean unit
 #
 # Protected = CloudStack virtual routers (r-*-VM, tenant network gateways)
@@ -29,6 +32,7 @@ CLEAR="${CLOUDSTACK_VM_PROTECT_CLEAR:-0}"
 PROTECT_BRIDGES="{{ cloudstack_protect_bridges | join(' ') }}"
 PROTECT_VRS="{{ 'yes' if cloudstack_protect_vrs | bool else 'no' }}"
 PROT_ADJ="{{ cloudstack_protect_oom_score_adj }}"
+PROT_CPU_WEIGHT="{{ cloudstack_protect_cpu_weight }}"
 if [ "$CLEAR" = 1 ]; then
   PROTECT_BRIDGES=""
   PROTECT_VRS=no
@@ -72,6 +76,7 @@ for name in $($VIRSH list --name 2>/dev/null); do
       echo $(( lowkib * 1024 )) > "$scdir/memory.low" 2>/dev/null || true
     fi
     echo "$PROT_ADJ" > "/proc/$pid/oom_score_adj" 2>/dev/null || true
+    [ -e "$scdir/cpu.weight" ] && echo "$PROT_CPU_WEIGHT" > "$scdir/cpu.weight" 2>/dev/null || true
     nprot=$((nprot + 1))
   else
     # Ensure no stale protection lingers (e.g. a VM that was protected then reclassified/migrated)
@@ -79,6 +84,10 @@ for name in $($VIRSH list --name 2>/dev/null); do
     if [ "$(cat "/proc/$pid/oom_score_adj" 2>/dev/null || echo 0)" != "0" ]; then
       echo 0 > "/proc/$pid/oom_score_adj" 2>/dev/null || true
     fi
+    # Undo a stale CPU boost (VM was protected, now reclassified -- or CLEAR=1).
+    # Only touch weights we raised; leave CloudStack's own per-VM weight alone.
+    cw=$(cat "$scdir/cpu.weight" 2>/dev/null || echo 100)
+    [ "${cw:-100}" -gt 1000 ] && echo 100 > "$scdir/cpu.weight" 2>/dev/null || true
     nother=$((nother + 1))
   fi
 done
