@@ -163,6 +163,21 @@ more makes the failure *likelier*, which is the trap the stock 5/5 pair sets.
   cloudstack when considering what users exist as well as group membership.
 - `cloudstack_saml_ignore_projects`: List of projects in cloudstack to ignore
   (basically don't disable them if they don't exist).
+- `cloudstack_saml_delete_disabled_after_days`: Days an account must stay
+  disabled before it is deleted, destroying every VM and volume it owns.
+  **Defaults to `0`, which never deletes.**  Disabling is what stops a
+  departing user's VMs being destroyed; deletion is the irreversible half and
+  is opt-in.  See
+  [User deactivation and reinstatement](#user-deactivation-and-reinstatement).
+- `cloudstack_saml_max_disable_percent`: Refuse to disable more than this
+  percentage of enabled accounts in one run, so a truncated directory read is
+  not mistaken for a mass departure.  Defaults to `25`, `0` to disable the
+  check.
+- `cloudstack_saml_max_delete_per_run`: Refuse to delete more than this many
+  accounts in one run.  An absolute count rather than a percentage: ordinary
+  expiry is one or two accounts at a time, so any percentage low enough to
+  catch a bulk expiry also blocks routine deletion.  Defaults to `5`, `0` to
+  disable the check.
 - `cloudstack_saml_groups_allowed`: Required.  List of groups to use for
   determining if the users within them are to be added to cloudstack.  This also
   allows groups to be matched using fnmatch() patterns, such as `cs_*`.
@@ -258,6 +273,90 @@ IDP.  The syncing portion assumes that LDAP is available from the IDP for this
 purpose.  LDAP authentication is not used because the IDP may require 2FA, and
 does not provide enough flexibility for assigning users to projects.
 
+
+### User deactivation and reinstatement
+
+When a user disappears from LDAP their account is **disabled**, not deleted, and
+its project and network memberships are left intact.  If they reappear the
+account is re-enabled on the next sync with its original VMs and volumes.  An
+account that stays disabled for `cloudstack_saml_delete_disabled_after_days`
+is then deleted, destroying everything it owns -- but that is **off by default**
+(`0`), so out of the box accounts are disabled and kept indefinitely.
+
+Disable timestamps are still recorded while deletion is off, so the retention
+clock reflects when each account actually went away rather than when deletion
+was switched on.  The flip side is that enabling it later finds a backlog of
+accounts already past the window; `cloudstack_saml_max_delete_per_run` refuses
+a bulk expiry rather than acting on it, so that is a deliberate decision at the
+time rather than a surprise.
+
+Absence is ambiguous -- deactivated in the IDP, dropped from a group, a renamed
+group, or an incomplete directory read all look identical -- so the timing rules
+fail towards keeping data:
+
+- The clock starts when the sync disables the account, never retroactively.  An
+  account already disabled but unstamped is stamped with the current time, so
+  nothing can be deleted until a full window has passed after deployment.
+- Reinstating clears the stamp, so a later deactivation gets a fresh window.
+- A missing or unparseable stamp is rewritten, never treated as infinitely old.
+
+Cloudstack does not record when an account changed state, so the sync stores the
+time in the account's `accountdetails` map under `ldapsync_disabled_since`.  It
+lives on the account rather than on disk because each management node runs this
+from its own staggered cron entry.
+
+Because LDAP is the source of truth, an account an administrator disabled by hand
+is re-enabled on the next sync if that user is still in LDAP.  To hold one
+disabled, list them in **both** `cloudstack_saml_ignore_users` (so the sync stops
+importing them from the IDP) and `cloudstack_saml_ignore_cloudstack_users` (so it
+stops reconciling the existing account).  Listing only the second makes the sync
+treat them as a new user and fail trying to re-create the account.
+
+An account left `locked` is never disabled, deleted, stamped or re-enabled by
+the sync, so locking is a durable administrative hold.  A stamp left on an
+account that is later locked is cleared, so unlocking it back to `disabled`
+starts a fresh retention window rather than expiring it immediately.
+
+Rolling back is destructive: the previous script deletes absent accounts outright,
+so the first run after a downgrade destroys whatever was being retained.  Set
+`cloudstack_saml_delete_disabled_after_days: 0` and let the disabled accounts
+drain first.  Note that `ldapsync_disabled_since` is left on the account when the
+role is removed.
+
+### Guarding against an incomplete directory read
+
+LDAP servers cap search results -- commonly at 1000 entries -- and report
+`sizeLimitExceeded` alongside a *partial* result set rather than an error, so a
+truncated directory reads as a mass departure.  Both searches are paged and the
+result code is checked; a failed or empty search aborts the run.
+
+As a backstop, the sync aborts before modifying anything if more than
+`cloudstack_saml_max_disable_percent` of the enabled accounts are absent in one
+run.  Up to 3 accounts may always be disabled regardless, so an ordinary
+departure does not trip the guard on a small deployment.  An untrustworthy
+directory read poisons the project and network reconciliation as much as the
+disable pass, which is why this one stops the whole run.
+
+Deletion has its own ceiling, `cloudstack_saml_max_delete_percent`, measured
+against the *disabled* accounts.  It is deliberately separate: accounts can
+reach the delete pass without ever having passed the disable guard, because a
+pre-existing disabled population -- or accounts an admin disabled by hand -- is
+stamped in bulk on the first run and then expires all on the same day.  No
+small-count exemption applies to it, since deletion is irreversible.
+
+Exceeding it skips only the delete pass, and refuses the deletions outright
+rather than trimming them to a per-run allowance -- an allowance would just
+spread the same bulk deletion across consecutive runs, which on an hourly cron
+is a few hours rather than a refusal.  The rest of the sync continues, and the
+message names the setting to raise if the expiry is genuine.
+
+Deletion re-reads each account immediately before destroying it and skips any
+that is no longer disabled, or whose disable timestamp changed since the run
+started, so an account another node re-enabled mid-run is not deleted on a
+stale snapshot.  A timestamp dated in the future is skipped rather than acted
+on, since it means this node's clock disagrees with the one that wrote it.
+Deletion arithmetic is only as trustworthy as the clock behind it, so the
+management nodes must have working NTP.
 
 ## Troubleshooting / Research
 
