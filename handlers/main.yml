@@ -1,5 +1,10 @@
 ---
 - name: "libvirt_restart"
+  # Roll one hypervisor at a time, matching cloudstack_agent_restart below.
+  # Restarting libvirtd does not stop running guests, but bouncing it on every
+  # host at once makes the whole fleet look unreachable to CloudStack for a few
+  # seconds, which is the failure this is trying to avoid.
+  throttle: 1
   ansible.builtin.service:
     name: libvirtd
     state: restarted

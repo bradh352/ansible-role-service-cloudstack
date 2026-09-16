@@ -23,6 +23,36 @@ cloudstack_protect_vrs: true            # protect all virtual routers (r-*-VM, t
 cloudstack_protect_oom_score_adj: -800  # negative => spared by the OOM killer
 cloudstack_protect_interval: "90s"
 
+# --- KVM agent / libvirtd concurrency -------------------------------------
+# INVARIANT, do not break it:
+#     libvirt_max_workers > libvirt_max_client_requests > cloudstack_agent_workers
+#
+# The agent's handler threads share ONE libvirt connection. If they can fill
+# libvirtd's per-client request budget, libvirtd stops reading that connection
+# until slots free up -- including its own keepalive ping -- and hangs up when
+# the keepalive budget expires. libvirtd says so itself:
+#
+#   Client hit max requests limit 5. This may result in keep-alive timeouts.
+#   Consider tuning the max_client_requests server parameter
+#
+# Stock values are workers=5 and max_client_requests=5, so the agent fills the
+# budget exactly whenever all its threads are busy. In production those two log
+# lines appear in a 1:1 ratio on every affected host, which is what identifies
+# them as one event rather than two.
+#
+# Keeping the budget strictly ABOVE the agent's thread count makes that
+# saturation structurally impossible rather than merely less frequent. Raising
+# the agent's workers WITHOUT raising the budget by more makes it likelier.
+cloudstack_agent_workers: 30            # agent.properties `workers`, was 5 (package default)
+libvirt_max_client_requests: 40         # was 5 (libvirt default); MUST exceed agent workers
+libvirt_max_workers: 50                 # was 20 (libvirt default); MUST exceed the above
+# Keepalive budget = interval x count. Default 5 x 5 = 30s. This is the second,
+# independent line of defence: even if the budget is somehow saturated, libvirtd
+# waits 180s rather than 30s before hanging up. 10 x 18 = 180s also rides out a
+# cron storm that briefly starves the agent's event loop.
+libvirt_keepalive_interval: 10
+libvirt_keepalive_count: 18
+
 cloudstack_saml_enable: false
 cloudstack_saml_user_attribute: "uid"
 cloudstack_saml_use_ssl: true

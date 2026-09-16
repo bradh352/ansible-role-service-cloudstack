@@ -45,6 +45,30 @@ database is always `cloud_usage`.  There is no ability to change these.
 
 ### Variables used only by KVM hypervisor nodes
 
+- `cloudstack_agent_workers`: Size of the agent's request-handler pool
+  (`workers` in `agent.properties`). Default 30. The CloudStack package default
+  is 5, which is small enough that one blocked libvirt call can consume every
+  handler thread and silence the agent completely.
+- `libvirt_max_client_requests`: libvirtd's per-client concurrent request window.
+  Default 40 (libvirt ships 5). **Must be strictly greater than
+  `cloudstack_agent_workers`.** The agent's threads share one connection; if they
+  can fill this budget, libvirtd stops reading the connection — including its own
+  keepalive ping — and hangs up. Keeping the budget above the thread count makes
+  that impossible rather than merely rare.
+- `libvirt_max_workers`: libvirtd's server-side worker pool. Default 50 (libvirt
+  ships 20). Must stay above `libvirt_max_client_requests` so a single busy client
+  cannot consume the whole pool.
+- `libvirt_keepalive_interval` / `libvirt_keepalive_count`: keepalive budget for
+  libvirtd, in seconds and probes. Default 10 x 18 = 180s (libvirt ships
+  5 x 5 = 30s). The agent connects over a local unix socket, so this is not
+  detecting network partitions — it only decides how long a busy agent event
+  loop may go unanswered before libvirtd closes the connection.
+
+These three must satisfy
+`libvirt_max_workers > libvirt_max_client_requests > cloudstack_agent_workers`;
+the role asserts it. Raising the agent's workers without raising the budget by
+more makes the failure *likelier*, which is the trap the stock 5/5 pair sets.
+
 ***Not implemented yet***
 
 - `cloudstack_zone`: Zone to provision host under.
