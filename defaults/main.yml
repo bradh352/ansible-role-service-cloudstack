@@ -69,6 +69,19 @@ cloudstack_saml_attr_email: "mail"
 cloudstack_saml_attr_group: "cn"
 cloudstack_saml_attr_group_members: "uniqueMember"
 cloudstack_saml_ignore_cloudstack_users:
+# Days an account must stay disabled before it is deleted, destroying every VM
+# and volume it owns.  0 never deletes, which is the default: disabling is what
+# stops a departing user's resources being destroyed, and deletion is the
+# irreversible half, so it is opt-in.
+cloudstack_saml_delete_disabled_after_days: 0
+# Refuse to disable more than this percentage of enabled accounts in one run, so
+# a truncated directory read is not mistaken for a mass departure.  0 disables.
+cloudstack_saml_max_disable_percent: 25
+# Refuse to delete more than this many accounts in one run.  An absolute count
+# rather than a percentage: ordinary expiry is one or two accounts at a time, so
+# any percentage low enough to catch a bulk expiry also blocks routine deletion.
+# 0 disables.
+cloudstack_saml_max_delete_per_run: 5
   - "admin"
 cloudstack_saml_ignore_projects: []
 cloudstack_saml_project_groups: []

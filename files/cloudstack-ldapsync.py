@@ -5,12 +5,25 @@ import configparser
 import fnmatch
 import random
 import string
-from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from typing import Dict, List, Optional, Set, Tuple
 
 import click
 import ldap3
 from cs import CloudStack
+
+# Records when this script disabled an account, in the account's "accountdetails"
+# map.  Cloudstack itself only reports "created", and keeping this on the account
+# rather than on disk keeps the staggered per-node cron runs consistent.
+DISABLED_SINCE_KEY = "ldapsync_disabled_since"
+
+# Below the 1000 entry limit Okta's LDAP interface and AD both apply.
+LDAP_PAGE_SIZE = 500
+
+# Accounts always allowed to be disabled in one run, regardless of percentage.
+# Without a floor the guard blocks ordinary departures on small deployments.
+MIN_DISABLE_BEFORE_GUARD = 3
 
 @dataclass
 class User:
@@ -24,6 +37,9 @@ class User:
     uuid: Optional[str]
     role: str
     usersource: str
+    state: str
+    details: Dict[str, str] = field(default_factory=dict)
+    disabled_since: Optional[datetime] = None
 
 
 @dataclass
@@ -98,6 +114,21 @@ def sync(config_path: str, cloudmonkey_config_path: str, dry_run: bool):
         timeout=60, # Cloudstack on create operations can be slow.
     )
 
+    now = datetime.now(timezone.utc)
+
+    # 0 (or a missing key, e.g. a stale config file) disables deletion entirely.
+    delete_after_days = config_getint(config, "delete_disabled_after_days", 0)
+
+    # Refuse to disable more than this share of the enabled accounts in one run.
+    # 0 disables the check.
+    max_disable_percent = config_getint(config, "max_disable_percent", 25)
+
+    # Refuse to delete more than this many accounts in one run.  An absolute
+    # count rather than a percentage: ordinary expiry is one or two accounts at
+    # a time, so any percentage low enough to catch a bulk expiry also blocks
+    # routine deletion on all but the largest deployments.  0 disables the check.
+    max_delete_per_run = config_getint(config, "max_delete_per_run", 5)
+
     ldap_users, ldap_groups = fetch_ldap(config)
     cs_users, cs_projects, cs_roles, cs_idps, cs_nets = fetch_cloudstack(cs_client, config)
 
@@ -107,16 +138,121 @@ def sync(config_path: str, cloudmonkey_config_path: str, dry_run: bool):
         print("== DRY RUN ==")
 
     new_users = users_not_in(ldap_users, cs_users)
+    absent_users = users_not_in(cs_users, ldap_users)
+
+    enabled_accounts = [user for user in cs_users.values() if user.state.lower() == "enabled"]
+    pending_disable = [user for user in absent_users if user.state.lower() == "enabled"]
+
+    # An account re-enabled outside this script keeps the stamp we wrote, which
+    # would short-circuit the retention window the next time it is disabled.
+    # Locked accounts are cleared too: locking is an administrative hold, and a
+    # stamp surviving across it would delete the account the moment an admin
+    # unlocked it back to disabled, with no retention window at all.
+    stale_stamps = [
+        user
+        for user in cs_users.values()
+        if user.disabled_since is not None and user.state.lower() in ("enabled", "locked")
+    ]
+
+    # Only accounts that are actually disabled can expire.  Anything still
+    # enabled is disabled further down, which restamps it, so it must not be
+    # counted here or it would be deleted in the same run it was disabled.
+    # "disabled" exactly, never "locked".  Locking is an administrative hold --
+    # the state an admin puts a departing or investigated employee in -- and
+    # nothing here ever lifts one, so deleting locked accounts would destroy
+    # exactly the data someone had deliberately frozen.
+    #
+    # A stamp dated in the future means this node's clock disagrees with the one
+    # that wrote it; skip rather than guess, since the arithmetic that decides
+    # deletion is only as trustworthy as the clock behind it.
+    expired_users = []
+    if delete_after_days > 0:
+        expired_users = [
+            user
+            for user in absent_users
+            if user.state.lower() == "disabled"
+            and user.disabled_since is not None
+            and user.disabled_since <= now
+            and (now - user.disabled_since).days >= delete_after_days
+        ]
+
+    # Both guards run before anything is modified.  A partial directory read
+    # shows up as a mass disable; disables are measured against enabled accounts
+    # only, so the growing pool of disabled ones does not creep the ratio up.
+    # Deletion is guarded separately rather than relying on the disable guard
+    # having seen these accounts: the stamping pass below admits accounts the
+    # disable guard never counted, and they can expire together in one run.
+    # A mass disable means the directory read is not trustworthy, and an
+    # untrustworthy read poisons the membership reconciliation below just as
+    # much as the disable pass, so this one aborts the whole run.
+    check_guard(
+        max_disable_percent,
+        len(pending_disable),
+        len(enabled_accounts),
+        "enabled accounts",
+        "are absent from LDAP",
+        "This usually means the directory query returned incomplete results.",
+        "max_disable_percent",
+        min_exempt=MIN_DISABLE_BEFORE_GUARD,
+    )
+
+    # A mass expiry says nothing about the directory read, so this one skips
+    # only the delete pass and lets the rest of the sync proceed.  It refuses
+    # the deletions outright rather than trimming them to a per-run allowance:
+    # an allowance would just spread the same bulk deletion over consecutive
+    # runs, which on an hourly cron is a few hours rather than a refusal.
+    if max_delete_per_run > 0 and len(expired_users) > max_delete_per_run:
+        print(
+            f" ! REFUSING to delete {len(expired_users)} accounts in one run, which exceeds "
+            f"max_delete_per_run of {max_delete_per_run}."
+        )
+        print("   Deletion destroys every VM and volume these accounts own.")
+        print("   A bulk expiry usually means accounts were stamped together rather than")
+        print("   having left one at a time -- a pre-existing disabled population, or")
+        print("   accounts disabled by hand, all reach their window on the same day.")
+        print("   Nothing will be deleted until this is resolved.  Inspect with --dry-run;")
+        print("   raise max_delete_per_run in the config if the expiry is genuine.")
+        expired_users = []
+
     if len(new_users):
         print(f" * Adding {len(new_users)} new users")
         for user in new_users:
             cs_user_add(cs_client, user, cs_roles, cs_idps, dry_run)
 
-    deleted_users = users_not_in(cs_users, ldap_users)
-    if len(deleted_users):
-        print(f" * Deleting {len(deleted_users)} users")
-        for user in deleted_users:
-            cs_user_del(cs_client, user, dry_run)
+    # Absence from LDAP is ambiguous (deactivated, dropped from a group, or an
+    # incomplete read), so absent users are disabled and only deleted once they
+    # have stayed that way for delete_disabled_after_days.  Their project and
+    # network membership is left alone meanwhile, so nothing needs rebuilding on
+    # reinstatement and the membership diff below must ignore them.
+    retained_users = {user.username for user in absent_users}
+
+    if len(stale_stamps):
+        print(f" * Clearing stale disable time for {len(stale_stamps)} re-enabled users")
+        for user in stale_stamps:
+            print(f"   * Clearing {user.username}")
+            if not dry_run:
+                cs_user_set_disabled_since(cs_client, user, None)
+
+    if len(pending_disable):
+        print(f" * Disabling {len(pending_disable)} users")
+        for user in pending_disable:
+            cs_user_disable(cs_client, now, user, dry_run)
+
+    # Already disabled but unstamped: first run after deployment, or disabled by
+    # hand.  Start the clock now rather than retroactively.
+    unstamped_users = [
+        user for user in absent_users if user.state.lower() == "disabled" and user.disabled_since is None
+    ]
+    if len(unstamped_users):
+        print(f" * Recording disable time for {len(unstamped_users)} already-disabled users")
+        for user in unstamped_users:
+            cs_user_stamp(cs_client, now, user, dry_run)
+
+    # Destroys every VM and volume the account owns, and cannot be undone.
+    if len(expired_users):
+        print(f" * Deleting {len(expired_users)} users disabled for {delete_after_days}+ days")
+        for user in expired_users:
+            cs_user_del(cs_client, now, user, dry_run)
 
     new_groups = groups_not_in(project_groups, cs_projects)
     if len(new_groups):
@@ -137,7 +273,7 @@ def sync(config_path: str, cloudmonkey_config_path: str, dry_run: bool):
         for user in updated_users:
             cs_user_mod(cs_client, user, cs_users[user.username], cs_roles, cs_idps, dry_run)
 
-    updated_groups = modified_groups(project_groups, cs_projects)
+    updated_groups = modified_groups(project_groups, cs_projects, retained_users)
     if len(updated_groups):
         print(f" * Updating {len(updated_groups)} projects")
         for group in updated_groups:
@@ -147,11 +283,117 @@ def sync(config_path: str, cloudmonkey_config_path: str, dry_run: bool):
         ldap_network_groups_members = {}
         for group in network.groups:
             ldap_network_groups_members.update(ldap_groups[group].members)
-        if network.members != ldap_network_groups_members:
+        if set(network.members) - retained_users != set(ldap_network_groups_members):
             print(f" * Updating network {network.uuid} membership")
             cs_network_mod(cs_client, ldap_network_groups_members, network, ldap_users, dry_run)
 
     print("Sync Complete")
+
+
+def abort(message: str) -> Exception:
+    """
+    Build an exception, printing it first.  The cron entry pipes stdout to
+    syslog, so an operator sees one greppable ABORT line rather than only a
+    traceback.
+
+    Parameters:
+        message [str]: Reason for aborting.
+
+    Returns:
+        Exception to raise.
+    """
+
+    print(f"ABORT: {message}")
+    return Exception(message)
+
+
+def config_getint(config: configparser.ConfigParser, key: str, fallback: int) -> int:
+    """
+    Read an integer setting, failing with a usable message rather than a
+    ValueError traceback from deep inside configparser.
+
+    Parameters:
+        config [ConfigParser]: Parsed configuration
+        key [str]: Key to read from the [cloudstack] section
+        fallback [int]: Value to use when the key is absent
+
+    Returns:
+        int: The configured value, or fallback if the key is missing.
+
+    Exceptions:
+        Exception if the key is present but not an integer.
+    """
+
+    try:
+        return config["cloudstack"].getint(key, fallback=fallback)
+    except ValueError:
+        raw = config["cloudstack"].get(key, fallback="")
+        raise abort(f"{key} in the config must be an integer, got '{raw}'.  No changes have been made.")
+
+
+def guard_exceeded(max_percent: int, count: int, total: int, min_exempt: int = 0) -> Optional[int]:
+    """
+    Decide whether count is an implausible share of total.
+
+    Parameters:
+        max_percent [int]: Percentage above which to refuse.  0 disables the check.
+        count [int]: Number of accounts about to be acted on.
+        total [int]: Population to measure against.
+        min_exempt [int]: Allow up to this many regardless of share, for
+            deployments small enough that any single departure is a large
+            percentage.  0 means every count is measured.
+
+    Returns:
+        Optional[int]: The offending percentage, or None if within bounds.
+    """
+
+    if max_percent <= 0 or total <= 0 or count <= min_exempt:
+        return None
+
+    percent = (count * 100) // total
+    if percent <= max_percent:
+        return None
+
+    return percent
+
+
+def check_guard(
+    max_percent: int,
+    count: int,
+    total: int,
+    noun: str,
+    verb: str,
+    hint: str,
+    setting: str,
+    min_exempt: int = 0,
+):
+    """
+    Abort the run if count is an implausible share of total.
+
+    Parameters:
+        max_percent [int]: Percentage above which to refuse.  0 disables the check.
+        count [int]: Number of accounts about to be acted on.
+        total [int]: Population to measure against.
+        noun [str]: What total counts, for the message.
+        verb [str]: What count is about to have happen, for the message.
+        hint [str]: Why this is worth a second look.
+        setting [str]: Config key to name in the message, so the operator has
+            something to act on rather than just a refusal.
+        min_exempt [int]: Allow up to this many regardless of share.
+
+    Exceptions:
+        Exception if the share exceeds max_percent.
+    """
+
+    percent = guard_exceeded(max_percent, count, total, min_exempt)
+    if percent is None:
+        return
+
+    raise abort(
+        f"{count} of {total} {noun} ({percent}%) {verb}, which exceeds {setting} of "
+        f"{max_percent}%.  No changes have been made.  {hint}  Re-run with --dry-run to "
+        f"inspect, or raise {setting} in the config if this is genuine."
+    )
 
 
 def cs_user_add(client: CloudStack, user: User, cs_roles: Dict[str, Role], cs_idps: Dict[str, IDP], dry_run: bool):
@@ -214,6 +456,13 @@ def cs_user_mod(
 
     print(f"   * Updating User {ldap_user.username}")
 
+    if not user_match_state(ldap_user, cs_user):
+        print("     * Enabling account")
+        if not dry_run:
+            client.enableAccount(id=cs_user.account_uuid)
+            # Cleared so a later deactivation gets a fresh retention window.
+            cs_user_set_disabled_since(client, cs_user, None)
+
     if not user_match_base(ldap_user, cs_user):
         print("     * Updating base data")
         if not dry_run:
@@ -224,7 +473,23 @@ def cs_user_mod(
     if not user_match_account(ldap_user, cs_user):
         print("     * Updating role")
         if not dry_run:
-            client.updateAccount(id=cs_user.account_uuid, roleid=cs_roles[ldap_user.role].uuid)
+            # No accountdetails here on purpose: updateAccount only touches the
+            # details map when the parameter is supplied, so the retention stamp
+            # survives a role change untouched.
+            #
+            # newname is mandatory even when nothing about the name changes --
+            # without it updateAccount fails with cserrorcode 4250 on 4.22, which
+            # is why role changes have never actually applied.  It renames the
+            # account, so it must be the name the server currently holds.
+            account = cs_account_read(client, cs_user.account_uuid)
+            if account is None:
+                print(f"     - {cs_user.username} vanished before its role could be updated")
+            else:
+                client.updateAccount(
+                    id=cs_user.account_uuid,
+                    newname=account["name"],
+                    roleid=cs_roles[ldap_user.role].uuid,
+                )
 
     if not user_match_auth(ldap_user, cs_user):
         print("     * Updating authentication")
@@ -232,12 +497,131 @@ def cs_user_mod(
             client.authorizeSamlSso(enable=True, userid=cs_user.uuid, entityid=next(iter(cs_idps.values())).id)
 
 
-def cs_user_del(client: CloudStack, user: User, dry_run: bool):
+def cs_user_disable(client: CloudStack, now: datetime, user: User, dry_run: bool):
     """
-    Delete existing Cloudstack user.
+    Disable an existing Cloudstack user whose account is no longer in LDAP.
+
+    The account and its resources are preserved so the user can be reinstated.
+    Disabling rather than locking also stops their running instances.
 
     Parameters:
         client [CloudStack]: Connected and logged in Cloudstack session
+        now [datetime]: Timestamp recorded as the moment the account was disabled.
+        user [User]: User to disable
+        dry_run [bool]: If true, only print what would occur.
+
+    Exceptions:
+        CloudStackException
+    """
+
+    print(f"   * Disabling User {user.username}: {user.account_uuid}")
+    if dry_run:
+        return
+
+    client.disableAccount(id=user.account_uuid, lock=False)
+    cs_user_set_disabled_since(client, user, now)
+
+
+def cs_user_stamp(client: CloudStack, now: datetime, user: User, dry_run: bool):
+    """
+    Record a disable timestamp on an account that is already disabled but has
+    none, starting the retention clock from now.
+
+    Parameters:
+        client [CloudStack]: Connected and logged in Cloudstack session
+        now [datetime]: Timestamp to record.
+        user [User]: User to stamp
+        dry_run [bool]: If true, only print what would occur.
+
+    Exceptions:
+        CloudStackException
+    """
+
+    print(f"   * Recording disable time for User {user.username}: {user.account_uuid}")
+    if dry_run:
+        return
+
+    cs_user_set_disabled_since(client, user, now)
+
+
+def cs_account_read(client: CloudStack, account_uuid: str) -> Optional[dict]:
+    """
+    Re-read a single account straight from Cloudstack.
+
+    Matched by uuid rather than taken positionally, so this does not depend on
+    the server having honoured the id filter.
+
+    Parameters:
+        client [CloudStack]: Connected and logged in Cloudstack session
+        account_uuid [str]: Account to read
+
+    Returns:
+        Optional[dict]: The account, or None if it no longer exists.
+
+    Exceptions:
+        CloudStackException
+    """
+
+    for account in client.listAccounts(id=account_uuid, listall=True).get("account", []):
+        if account.get("id") == account_uuid:
+            return account
+    return None
+
+
+def cs_user_set_disabled_since(client: CloudStack, user: User, value: Optional[datetime]):
+    """
+    Write (or clear) the disable timestamp stored in the account's details map.
+
+    Cloudstack merges the supplied keys into the account's existing details
+    (AccountDetailsDaoImpl.update reads the current map, putAll's over it and
+    rewrites it), so a key cannot be removed by leaving it out.  None therefore
+    clears the timestamp by storing an empty string.
+
+    The whole map is resent rather than just the one key, so this stays correct
+    if those semantics are ever replace rather than merge.  Note the map comes
+    from the snapshot fetch_cloudstack took at the start of the run, NOT from a
+    fresh read -- a detail written by something else mid-run would be lost.
+
+    Parameters:
+        client [CloudStack]: Connected and logged in Cloudstack session
+        user [User]: User whose details are updated
+        value [Optional[datetime]]: Timestamp to record, or None to clear it.
+
+    Exceptions:
+        CloudStackException
+    """
+
+    # Re-read rather than reusing the snapshot fetch_cloudstack took at the top
+    # of the run.  The whole map is resent, so writing the snapshot back would
+    # revert anything added to this account's details since -- and those details
+    # hold live credentials (Ceph RGW access/secret keys, for instance),
+    # not just this stamp.  Every management node runs its own cron, so that
+    # window is real.
+    account = cs_account_read(client, user.account_uuid)
+    if account is None:
+        print(f"     - {user.username} vanished before its disable time could be written")
+        return
+
+    details = dict(account.get("accountdetails") or {})
+    details[DISABLED_SINCE_KEY] = value.isoformat() if value is not None else ""
+
+    # newname is mandatory: without it updateAccount fails with cserrorcode 4250
+    # on 4.22.  It renames the account, so it has to be the name the server
+    # currently holds -- taken from the read above, never reconstructed.
+    client.updateAccount(id=user.account_uuid, newname=account["name"], accountdetails=details)
+    user.details = details
+    user.disabled_since = value
+
+
+def cs_user_del(client: CloudStack, now: datetime, user: User, dry_run: bool):
+    """
+    Permanently delete an account disabled longer than the retention window.
+    Destroys every resource it owns and cannot be undone.
+
+    Parameters:
+        client [CloudStack]: Connected and logged in Cloudstack session
+        now [datetime]: Current time, used only to report how long the account
+            has been disabled.
         user [User]: User to delete
         dry_run [bool]: If true, only print what would occur.
 
@@ -245,14 +629,33 @@ def cs_user_del(client: CloudStack, user: User, dry_run: bool):
         CloudStackException
     """
 
-    print(f"   * Deleting User {user.username}: {user.account_uuid}")
+    days = (now - user.disabled_since).days if user.disabled_since else -1
+    print(f"   * Deleting User {user.username}: {user.account_uuid} (disabled {days} days)")
     if dry_run:
         return
 
-    # Disable account first then delete.  Delete in theory could fail if the
-    # account is a resource owner of something like a Project, which hopefully
-    # won't actually happen.
-    client.disableAccount(id=user.account_uuid, lock=False)
+    # Re-read immediately before destroying anything.  The decision to delete
+    # was made from a snapshot taken at the top of the run, and every
+    # management node runs this from its own cron entry, so another node (or an
+    # admin) may have re-enabled the account in between.  Deleting on a stale
+    # read is how a reinstated user loses everything.
+    # Matched by uuid rather than taken positionally: this must not depend on
+    # the server having honoured the id filter.
+    current = cs_account_read(client, user.account_uuid)
+    if current is None:
+        print(f"     - vanished before deletion, skipping")
+        return
+
+    state = current.get("state", "").lower()
+    if state != "disabled":
+        print(f"     - now {state} rather than disabled, skipping")
+        return
+
+    stamp = parse_timestamp((current.get("accountdetails") or {}).get(DISABLED_SINCE_KEY))
+    if stamp is None or stamp != user.disabled_since:
+        print(f"     - disable timestamp changed since the run started, skipping")
+        return
+
     client.deleteAccount(id=user.account_uuid)
 
 
@@ -326,8 +729,10 @@ def cs_project_mod(
                     )
         for member in cs_project.members:
             if member not in ldap_group.members:
-                # On user deletion, we've pre-cached group membership, but it will be auto-removed so skip
-                # deleted users.
+                # Users absent from LDAP are disabled and retained, not deleted, so
+                # leave their membership alone; nothing needs rebuilding if they
+                # are reinstated, and Cloudstack clears it if the account is
+                # eventually deleted.
                 if member not in ldap_users:
                     continue
                 print(f"     * Removing member {member}")
@@ -369,8 +774,8 @@ def cs_network_mod(client: CloudStack, ldap_group_members: Dict[str, None], netw
                 )
     for member in network.members:
         if member not in ldap_group_members:
-            # On user deletion, we've pre-cached group membership, but it will be auto-removed so skip
-            # deleted users.
+            # Retained users keep their access for the same reason as project
+            # membership above.
             if member not in ldap_users:
                 continue
             print(f"     * Removing member {member}")
@@ -459,6 +864,32 @@ def fetch_required_string(values: dict, name: str) -> str:
     return val
 
 
+def parse_timestamp(val: Optional[str]) -> Optional[datetime]:
+    """
+    Anything missing, empty or unparseable is treated as "no timestamp", which
+    restamps the account rather than deleting it.
+
+    Parameters:
+        val [Optional[str]]: ISO 8601 timestamp, or None.
+
+    Returns:
+        Timezone aware datetime if parseable, otherwise None.
+    """
+
+    if not val:
+        return None
+
+    try:
+        parsed = datetime.fromisoformat(val)
+    except ValueError:
+        return None
+
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+
+    return parsed
+
+
 def strtobool(val: str) -> bool:
     """
     Convert provided string value into a boolean.
@@ -487,6 +918,60 @@ def project_groups_list(config: configparser.ConfigParser, groups: Dict[str, Gro
                 out[name] = data
                 break
     return out
+
+
+def ldap_search(conn: "ldap3.Connection", search_base: str, description: str) -> List[Dict]:
+    """
+    Perform a paged LDAP search and return every entry beneath search_base.
+
+    Servers cap result sets (commonly at 1000 entries) and report
+    sizeLimitExceeded alongside a *partial* result rather than an error, so an
+    unpaged search silently sees a truncated directory -- which here reads as
+    users having left.  Hence paging, and checking the result code rather than
+    only testing the response for None.
+
+    Parameters:
+        conn [ldap3.Connection]: Bound LDAP connection
+        search_base [str]: DN to search beneath
+        description [str]: Human readable name used in error messages
+
+    Returns:
+        entries [List[Dict]]: Every searchResEntry returned by the server.
+
+    Exceptions:
+        LDAPException
+        Exception if the search failed or returned nothing at all.
+    """
+
+    entries = []
+    for row in conn.extend.standard.paged_search(
+        search_base=search_base,
+        search_filter="(objectclass=*)",
+        attributes=ldap3.ALL_ATTRIBUTES,
+        paged_size=LDAP_PAGE_SIZE,
+        # Without this the control is advisory: a server that does not support
+        # paging ignores it and answers with a single silently truncated page
+        # and result code 0, which is precisely the truncation paging is here to
+        # catch.  Critical makes such a server refuse the search instead.
+        paged_criticality=True,
+        generator=True,
+    ):
+        # Referrals and other non-entry responses carry no attributes.
+        if row.get("type") != "searchResEntry":
+            continue
+        entries.append(row)
+
+    result = conn.result or {}
+    if result.get("result"):
+        raise abort(
+            f"{description} search failed: {result.get('description')} ({result.get('message')})"
+        )
+
+    # Never legitimate, and would otherwise read as "everyone has left".
+    if not entries:
+        raise abort(f"{description} search under {search_base} returned no entries")
+
+    return entries
 
 
 def fetch_ldap(config: configparser.ConfigParser) -> Tuple[Dict[str, User], Dict[str, Group]]:
@@ -524,17 +1009,10 @@ def fetch_ldap(config: configparser.ConfigParser) -> Tuple[Dict[str, User], Dict
     all_allowed_users = {}
     admin_users = {}
 
-    conn.search(
-        search_base=config["ldap"]["groupdn"],
-        search_filter="(objectclass=*)",
-        attributes=ldap3.ALL_ATTRIBUTES,
-    )
-
-    if conn.response is None:
-        raise Exception("group search failed")
+    group_entries = ldap_search(conn, config["ldap"]["groupdn"], "group")
 
     groups = {}
-    for row in conn.response:
+    for row in group_entries:
         attr = row["raw_attributes"]
 
         name = fetch_string(attr, config["ldap"]["attr_group"])
@@ -582,17 +1060,10 @@ def fetch_ldap(config: configparser.ConfigParser) -> Tuple[Dict[str, User], Dict
 
         groups[group.name] = group
 
-    conn.search(
-        search_base=config["ldap"]["userdn"],
-        search_filter="(objectclass=*)",
-        attributes=ldap3.ALL_ATTRIBUTES,
-    )
-
-    if conn.response is None:
-        raise Exception("user search failed")
+    user_entries = ldap_search(conn, config["ldap"]["userdn"], "user")
 
     users = {}
-    for row in conn.response:
+    for row in user_entries:
         attr = row["raw_attributes"]
 
         username = fetch_string(attr, config["ldap"]["attr_username"])
@@ -606,6 +1077,7 @@ def fetch_ldap(config: configparser.ConfigParser) -> Tuple[Dict[str, User], Dict
             email=fetch_string(attr, config["ldap"].get("attr_email")),
             role="Root Admin" if username in admin_users else "User",
             usersource="saml2",
+            state="enabled",
             uuid=None,
             account_uuid=None,
         )
@@ -670,6 +1142,8 @@ def fetch_cloudstack(
         if u is None:
             raise Exception(f"Account {account['name']} is expected to have a username of an equivalent name.")
 
+        details = account.get("accountdetails") or {}
+
         user = User(
             username=u["username"],
             account_uuid=account["id"],
@@ -679,6 +1153,9 @@ def fetch_cloudstack(
             email=u.get("email"),
             role=account["rolename"],
             usersource=u["usersource"],
+            state=account["state"],
+            details=details,
+            disabled_since=parse_timestamp(details.get(DISABLED_SINCE_KEY)),
         )
         users[user.username] = user
 
@@ -781,6 +1258,16 @@ def user_match_auth(ldap_user: User, cs_user: User) -> bool:
     return True
 
 
+def user_match_state(ldap_user: User, cs_user: User) -> bool:
+    # "locked" is an administrative hold this script never applies, so it is not
+    # ours to lift.  Only a plain "disabled" is reversed on reinstatement.
+    if cs_user.state.lower() == "locked":
+        return True
+    if ldap_user.state.lower() != cs_user.state.lower():
+        return False
+    return True
+
+
 def user_match_account(ldap_user: User, cs_user: User) -> bool:
     if ldap_user.role != cs_user.role:
         return False
@@ -810,6 +1297,8 @@ def user_match(ldap_user: User, cs_user: User) -> bool:
         match [bool]: Whether or not user data matches
     """
 
+    if not user_match_state(ldap_user, cs_user):
+        return False
     if not user_match_base(ldap_user, cs_user):
         return False
     if not user_match_account(ldap_user, cs_user):
@@ -843,13 +1332,16 @@ def modified_users(ldap_users: Dict[str, User], cs_users: Dict[str, User]) -> Li
     return users
 
 
-def group_match(ldap_group: Group, cs_group: Group) -> bool:
+def group_match(ldap_group: Group, cs_group: Group, retained_users: Set[str]) -> bool:
     """
     Determine if the 2 groups are identical.
 
     Parameters:
         ldap_group [Group]: LDAP group
         cs_group [Group]: Cloudstack group
+        retained_users [Set[str]]: Cloudstack accounts kept but disabled because
+            they are absent from LDAP.  Their project membership is left as-is,
+            so it must not count as a difference.
 
     Returns:
         match [bool]: Whether or not group data matches
@@ -858,19 +1350,23 @@ def group_match(ldap_group: Group, cs_group: Group) -> bool:
     if ldap_group.enabled != cs_group.enabled:
         return False
 
-    if ldap_group.members != cs_group.members:
+    if set(ldap_group.members) != set(cs_group.members) - retained_users:
         return False
 
     return True
 
 
-def modified_groups(ldap_groups: Dict[str, Group], cs_groups: Dict[str, Group]) -> List[Group]:
+def modified_groups(
+    ldap_groups: Dict[str, Group], cs_groups: Dict[str, Group], retained_users: Set[str]
+) -> List[Group]:
     """
     Determine the list of modified groups.
 
     Parameters:
         ldap_groups [Dict[str, Group]]: Group list from LDAP
         cs_groups [Dict[str, Group]]: Group list from Cloudstack
+        retained_users [Set[str]]: Cloudstack accounts kept but disabled because
+            they are absent from LDAP.
 
     Returns:
         users [List[Groups]]: List of modified groups.  Excludes Added and Deleted groups.
@@ -880,7 +1376,7 @@ def modified_groups(ldap_groups: Dict[str, Group], cs_groups: Dict[str, Group]) 
         cs_group = cs_groups.get(ldap_group.name)
         if cs_group is None:
             continue
-        if group_match(ldap_group, cs_group):
+        if group_match(ldap_group, cs_group, retained_users):
             continue
         groups.append(ldap_group)
     return groups

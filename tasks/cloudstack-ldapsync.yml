@@ -1,4 +1,15 @@
 ---
+# Old and new disagree about what absence from LDAP means: the old script deletes
+# those accounts outright.  A node left behind would undo, within the hour, the
+# accounts this one is retaining.
+- name: "LDAPSYNC: Refuse a partial rollout"
+  ansible.builtin.assert:
+    that: groups['cloudstack_mgmt'] | difference(ansible_play_hosts) | length == 0
+    fail_msg: >-
+      {{ groups['cloudstack_mgmt'] | difference(ansible_play_hosts) | join(', ') }}
+      would keep the old sync script, which deletes absent accounts outright.
+  run_once: true
+
 - name: "LDAPSYNC: APT: Install components for sync script"
   ansible.builtin.apt:
     pkg:
