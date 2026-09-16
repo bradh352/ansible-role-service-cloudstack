@@ -98,6 +98,19 @@
       ]
   notify: libvirt_restart
 
+- name: "Assert the agent/libvirtd concurrency invariant"
+  ansible.builtin.assert:
+    that:
+      - libvirt_max_workers | int > libvirt_max_client_requests | int
+      - libvirt_max_client_requests | int > cloudstack_agent_workers | int
+    fail_msg: >-
+      Need libvirt_max_workers ({{ libvirt_max_workers }}) >
+      libvirt_max_client_requests ({{ libvirt_max_client_requests }}) >
+      cloudstack_agent_workers ({{ cloudstack_agent_workers }}). If the agent's
+      threads can fill libvirtd's per-client request budget, libvirtd stops
+      reading the connection - keepalive included - and hangs up on the agent.
+    quiet: true
+
 - name: "cloudstack agent set cpu model"
   ansible.builtin.lineinfile:
     path: /etc/cloudstack/agent/agent.properties
@@ -111,6 +124,12 @@
     - { key: "libvirt.events.enabled", val: "true" }
     - { key: "host.reserved.mem.mb", val: "{{ reserved_mem }}" }
     - { key: "vm.rng.enable", val: "true" }
+    # Request-handler pool. The package default of 5 means a single libvirt call
+    # that blocks (e.g. a storage pool lookup on a connection libvirtd has just
+    # closed) can consume every handler thread, after which the agent answers
+    # nothing at all - not even health checks - and the management server blocks
+    # on it until the 1800s command timeout.
+    - { key: "workers", val: "{{ cloudstack_agent_workers }}" }
   notify: cloudstack_agent_restart
 
 - name: "See if cloudstack TLS key has been created"
@@ -130,6 +149,18 @@
     - { key: "tcp_port", val: '"16509"' }
     - { key: "auth_tcp", val: '"none"' }
     - { key: "mdns_adv", val: "0" }
+    # The agent reaches libvirtd over a local unix socket, so the stock 5s x 5
+    # keepalive budget is heartbeat-probing a peer that cannot be partitioned from
+    # it. All it achieves is closing the connection whenever the agent's event
+    # loop is starved for 30s.
+    - { key: "keepalive_interval", val: "{{ libvirt_keepalive_interval }}" }
+    - { key: "keepalive_count", val: "{{ libvirt_keepalive_count }}" }
+    # The request budget must stay STRICTLY ABOVE the agent's worker count. If
+    # the agent's threads can fill it, libvirtd stops reading that connection -
+    # keepalive ping included - and hangs up. max_workers in turn leads the
+    # budget so one busy client cannot consume the whole server pool.
+    - { key: "max_client_requests", val: "{{ libvirt_max_client_requests }}" }
+    - { key: "max_workers", val: "{{ libvirt_max_workers }}" }
   notify: libvirt_restart
 
 - name: "setup libvirt for cloudstack /etc/default"
