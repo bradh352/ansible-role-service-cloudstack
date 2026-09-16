@@ -239,15 +239,45 @@
     - "5900:6100" # VNC consoles)
     - "49152:49216" # libvirt live migration
 
-- name: "KSM: more aggressive settings"
+# KSM dedup lets us overcommit guest memory, but an aggressive scan rate
+# (pages_to_scan / sleep_millisecs) forces constant THP split/collapse churn.
+# That churn, together with synchronous THP compaction, drove multi-CPU soft
+# lockups in the KVM vCPU threads. Scan rate here is ~5k pages/s (1000/200ms)
+# vs the previous ~80k pages/s (4000/50ms) -- still dedups, far less lock/CPU
+# churn.
+- name: "KSM: dedup settings (moderated scan rate)"
   ansible.builtin.copy:
     dest: /etc/sysfs.d/ksm.conf
     mode: "644"
     owner: root
     content: |
       kernel/mm/ksm/run = 1
-      kernel/mm/ksm/sleep_millisecs = 50
-      kernel/mm/ksm/pages_to_scan = 4000
+      kernel/mm/ksm/sleep_millisecs = 200
+      kernel/mm/ksm/pages_to_scan = 1000
+  notify: sysfs_restart
+
+# Guest RAM is THP-backed (madvise(MADV_HUGEPAGE) from QEMU). Any defrag mode
+# that includes "madvise" -- including defer+madvise -- still does SYNCHRONOUS
+# direct compaction for those madvise regions, i.e. inside the faulting vCPU
+# thread. On a fragmented, overcommitted host that compaction stalls the vCPU
+# for 200s+ and trips the soft-lockup watchdog (observed with compact_stall in
+# the hundreds of thousands, 61% of them failing, when an allocation burst in
+# one guest wedged vCPUs across the host).
+#
+# defrag=never removes direct compaction from the fault path entirely: a THP
+# allocation that cannot be satisfied from free memory falls back to 4 KiB
+# instantly (no stall). enabled=madvise still lets guests use huge pages when
+# they are freely available, and khugepaged still collapses them in the
+# BACKGROUND (its own thread, never the vCPU). Trade: slightly more 4 KiB
+# fallback / TLB pressure -- worth it to eliminate the soft-lockup mechanism.
+- name: "THP: keep huge pages but never compact in the vCPU fault path"
+  ansible.builtin.copy:
+    dest: /etc/sysfs.d/thp.conf
+    mode: "644"
+    owner: root
+    content: |
+      kernel/mm/transparent_hugepage/enabled = madvise
+      kernel/mm/transparent_hugepage/defrag = never
   notify: sysfs_restart
 
 #- name: "BUG: Workaround agent issues by restarting daily"
