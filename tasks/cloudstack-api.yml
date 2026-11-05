@@ -111,6 +111,12 @@
     - { key: "vm.stats.interval", val: "60000" }
     - { key: "kvm.vmstoragesnapshot.enabled", val: "true" }
     - { key: "kvm.snapshot.enabled", val: "true" }
+    # Keep volume snapshots on primary storage. With this true, every snapshot
+    # of an RBD volume is also copied in full to the NFS secondary store.
+    - { key: "snapshot.backup.to.secondary", val: "false" }
+    # Delta snapshots instead of a full copy each time. This only affects
+    # file-based pools (NFS, local); RBD snapshots are copy-on-write anyway.
+    - { key: "kvm.incremental.snapshot", val: "true" }
     - { key: "kvm.auto.convergence", val: "true" }
     - { key: "kvm.storage.pool.io.policy", val: "io_uring" }
     - { key: "drs.algorithm", val: "{{ cloudstack_drs_algorithm }}" }
