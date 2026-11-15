@@ -9,6 +9,15 @@
 
 DSTPORT=4789
 
+# MTU for every VXLAN device and bridge this script manages. A bridge larger than
+# its guests' MTU is harmless: a guest never sends more than its own MTU, so 1500
+# guests are unaffected. 9150 lets guests that run VXLAN themselves keep a 9100-byte
+# inner MTU (9100 plus one 50-byte wrap). Our own wrap adds 50 more, so the
+# hypervisor's underlay has to carry 9200; with a 9216-byte fabric that leaves 16
+# bytes of margin, which also means the VTEP must stay IPv4-sourced (an IPv6 outer
+# header costs 20 more), so don't use -6 with this MTU.
+MTU=9150
+
 # We bind our VXLAN tunnel IP(v4) on Loopback device 'lo'
 DEV="lo"
 
@@ -54,6 +63,12 @@ addVxlan() {
     if [[ $? -gt 0 ]]; then
         ip link set ${VXLAN_DEV} master ${VXLAN_BR}
     fi
+
+    # On every add, not only at creation, so a bridge made before this setting (or
+    # by an older copy of this script) is raised too. The VXLAN port first, then the
+    # bridge; libvirt gives each tap the bridge's MTU when it attaches it.
+    ip link set ${VXLAN_DEV} mtu ${MTU}
+    ip link set ${VXLAN_BR} mtu ${MTU}
 }
 
 deleteVxlan() {
